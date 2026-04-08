@@ -31,7 +31,7 @@ jobs:
 
           FOUND=0
           for pattern in "${PATTERNS[@]}"; do
-            if grep -r -E "$pattern" . --exclude-dir=.git --exclude-dir=node_modules; then
+            if grep -r -E "$pattern" . --exclude-dir=.git --exclude-dir=.github --exclude-dir=node_modules; then
               echo "❌ 検出: $pattern"
               FOUND=1
             fi
