@@ -1,0 +1,133 @@
+name: Daily Audit
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 毎日 UTC 0:00（JST 9:00）
+  workflow_dispatch:
+
+jobs:
+  daily-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: 監査チェック実行
+        id: audit
+        run: |
+          PROBLEMS=""
+          PROBLEM_COUNT=0
+
+          # --- 1. const/letチェック ---
+          echo "🔍 ES5準拠チェック..."
+          ES5_VIOLATIONS=""
+          while IFS= read -r file; do
+            HITS=$(grep -n -E '\b(const|let)\b' "$file" 2>/dev/null || true)
+            if [ -n "$HITS" ]; then
+              ES5_VIOLATIONS="${ES5_VIOLATIONS}${file}\n"
+            fi
+          done < <(find gas -name "*.js" -type f 2>/dev/null)
+
+          if [ -n "$ES5_VIOLATIONS" ]; then
+            PROBLEMS="${PROBLEMS}・const/let使用を検出:\\n$(echo -e "$ES5_VIOLATIONS")\\n"
+            PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+          fi
+
+          # --- 2. appsscript.json存在チェック ---
+          echo "🔍 appsscript.jsonチェック..."
+          REQUIRED_FILES=(
+            "gas/listing/standalone/appsscript.json"
+            "gas/listing/container/appsscript.json"
+            "gas/research/container/appsscript.json"
+            "gas/ebay-db/container/appsscript.json"
+          )
+          MISSING_FILES=""
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              MISSING_FILES="${MISSING_FILES}・${file}\\n"
+            fi
+          done
+
+          if [ -n "$MISSING_FILES" ]; then
+            PROBLEMS="${PROBLEMS}・appsscript.json不足:\\n${MISSING_FILES}\\n"
+            PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+          fi
+
+          # --- 3. APIキー混入チェック ---
+          echo "🔍 APIキー混入チェック..."
+          PATTERNS=(
+            "EBAY_CLIENT_ID=[A-Za-z0-9]"
+            "EBAY_CLIENT_SECRET=[A-Za-z0-9]"
+            "refresh_token=[A-Za-z0-9]"
+            "access_token=[A-Za-z0-9]"
+            "private_key"
+          )
+          SECRET_FOUND=""
+          for pattern in "${PATTERNS[@]}"; do
+            if grep -r -E "$pattern" . \
+                 --exclude-dir=.git \
+                 --exclude-dir=.github \
+                 --exclude-dir=node_modules > /dev/null 2>&1; then
+              SECRET_FOUND="${SECRET_FOUND}・${pattern}\\n"
+            fi
+          done
+
+          if [ -n "$SECRET_FOUND" ]; then
+            PROBLEMS="${PROBLEMS}・APIキー混入を検出:\\n${SECRET_FOUND}\\n"
+            PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+          fi
+
+          # --- 4. .gitignoreに.envが含まれているか ---
+          echo "🔍 .gitignoreチェック..."
+          if [ ! -f ".gitignore" ]; then
+            PROBLEMS="${PROBLEMS}・.gitignoreファイルが存在しません\\n"
+            PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+          elif ! grep -q "\.env" .gitignore 2>/dev/null; then
+            PROBLEMS="${PROBLEMS}・.gitignoreに.envが含まれていません\\n"
+            PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+          fi
+
+          # --- 結果出力 ---
+          TODAY=$(date -u +"%Y-%m-%d")
+          echo "audit_date=${TODAY}" >> "$GITHUB_OUTPUT"
+          echo "problem_count=${PROBLEM_COUNT}" >> "$GITHUB_OUTPUT"
+
+          if [ $PROBLEM_COUNT -eq 0 ]; then
+            echo "audit_result=✅ 問題なし" >> "$GITHUB_OUTPUT"
+            echo "audit_details=すべてのチェックを通過しました" >> "$GITHUB_OUTPUT"
+          else
+            echo "audit_result=❌ ${PROBLEM_COUNT}件の問題を検出" >> "$GITHUB_OUTPUT"
+            echo "audit_details=${PROBLEMS}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Discord通知
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_AUDIT }}
+        run: |
+          RESULT="${{ steps.audit.outputs.audit_result }}"
+          DETAILS=$(echo -e "${{ steps.audit.outputs.audit_details }}")
+
+          if [ "${{ steps.audit.outputs.problem_count }}" = "0" ]; then
+            COLOR=5763719
+          else
+            COLOR=15548997
+          fi
+
+          PAYLOAD=$(cat <<DISCORD_EOF
+          {
+            "embeds": [{
+              "title": "【毎日監査】ebay-gas-automation",
+              "color": ${COLOR},
+              "fields": [
+                { "name": "日時", "value": "${{ steps.audit.outputs.audit_date }}", "inline": true },
+                { "name": "結果", "value": "${RESULT}", "inline": true },
+                { "name": "詳細", "value": "${DETAILS}" }
+              ]
+            }]
+          }
+          DISCORD_EOF
+          )
+          curl -sS -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"

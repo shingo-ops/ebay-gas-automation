@@ -14,7 +14,6 @@ on:
 jobs:
   deploy-listing-standalone:
     runs-on: ubuntu-latest
-    if: contains(toJSON(github.event.commits.*.modified), 'gas/listing/standalone/') || contains(toJSON(github.event.commits.*.added), 'gas/listing/standalone/') || contains(toJSON(github.event.commits.*.removed), 'gas/listing/standalone/')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -43,7 +42,6 @@ jobs:
 
   deploy-listing-container:
     runs-on: ubuntu-latest
-    if: contains(toJSON(github.event.commits.*.modified), 'gas/listing/container/') || contains(toJSON(github.event.commits.*.added), 'gas/listing/container/') || contains(toJSON(github.event.commits.*.removed), 'gas/listing/container/')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -72,7 +70,6 @@ jobs:
 
   deploy-research-container:
     runs-on: ubuntu-latest
-    if: contains(toJSON(github.event.commits.*.modified), 'gas/research/container/') || contains(toJSON(github.event.commits.*.added), 'gas/research/container/') || contains(toJSON(github.event.commits.*.removed), 'gas/research/container/')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -101,9 +98,7 @@ jobs:
 
   deploy-ebay-db-container:
     runs-on: ubuntu-latest
-    if: |
-      github.ref_name == 'develop' &&
-      (contains(toJSON(github.event.commits.*.modified), 'gas/ebay-db/container/') || contains(toJSON(github.event.commits.*.added), 'gas/ebay-db/container/') || contains(toJSON(github.event.commits.*.removed), 'gas/ebay-db/container/'))
+    if: github.ref == 'refs/heads/develop'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

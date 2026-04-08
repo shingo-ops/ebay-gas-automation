@@ -1,0 +1,47 @@
+name: Security Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  check-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for API keys
+        run: |
+          echo "🔍 APIキーの混入をチェック中..."
+
+          # パターン定義
+          PATTERNS=(
+            "EBAY_CLIENT_ID=[A-Za-z0-9]"
+            "EBAY_CLIENT_SECRET=[A-Za-z0-9]"
+            "refresh_token=[A-Za-z0-9]"
+            "access_token=[A-Za-z0-9]"
+            "private_key"
+          )
+
+          FOUND=0
+          for pattern in "${PATTERNS[@]}"; do
+            if grep -r -E "$pattern" . --exclude-dir=.git --exclude-dir=.github --exclude-dir=node_modules; then
+              echo "❌ 検出: $pattern"
+              FOUND=1
+            fi
+          done
+
+          if [ $FOUND -eq 1 ]; then
+            echo ""
+            echo "❌ APIキーまたはシークレットが検出されました"
+            echo "これらの情報は環境変数またはGitHub Secretsを使用してください"
+            exit 1
+          fi
+
+          echo "✅ APIキーの混入は検出されませんでした"

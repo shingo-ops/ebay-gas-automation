@@ -1,0 +1,204 @@
+name: Auto Fix
+
+on:
+  workflow_run:
+    workflows: ["Security Check", "GAS Lint Check"]
+    types:
+      - completed
+
+jobs:
+  auto-fix:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_branch == 'develop'
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: 自動修正（最大3回リトライ）
+        id: auto-fix
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          FAILED_WORKFLOW="${{ github.event.workflow_run.name }}"
+          MAX_ATTEMPTS=3
+
+          # --- チェック関数 ---
+          run_security_check() {
+            local PATTERNS=(
+              "EBAY_CLIENT_ID=[A-Za-z0-9]"
+              "EBAY_CLIENT_SECRET=[A-Za-z0-9]"
+              "refresh_token=[A-Za-z0-9]"
+              "access_token=[A-Za-z0-9]"
+              "private_key"
+            )
+            for pattern in "${PATTERNS[@]}"; do
+              if grep -r -E "$pattern" . \
+                   --exclude-dir=.git \
+                   --exclude-dir=.github \
+                   --exclude-dir=node_modules > /dev/null 2>&1; then
+                return 1
+              fi
+            done
+            return 0
+          }
+
+          run_gas_lint() {
+            # ES5準拠チェック（const/let禁止）
+            while IFS= read -r file; do
+              if grep -n -E '\b(const|let)\b' "$file" > /dev/null 2>&1; then
+                return 1
+              fi
+            done < <(find gas -name "*.js" -type f 2>/dev/null)
+
+            # appsscript.json存在チェック
+            local REQUIRED_FILES=(
+              "gas/listing/standalone/appsscript.json"
+              "gas/listing/container/appsscript.json"
+              "gas/research/container/appsscript.json"
+              "gas/ebay-db/container/appsscript.json"
+            )
+            for file in "${REQUIRED_FILES[@]}"; do
+              if [ ! -f "$file" ]; then
+                return 1
+              fi
+            done
+            return 0
+          }
+
+          # --- 失敗したワークフローに応じてチェック関数とプロンプトを選択 ---
+          if [ "$FAILED_WORKFLOW" = "Security Check" ]; then
+            CHECK_FUNC="run_security_check"
+            FIX_PROMPT="security-check.ymlのチェックでAPIキー・シークレットの混入が検出されました。ハードコードされた認証情報をPropertiesServiceやGitHub Secretsへの参照に置き換えてください。対象ファイルを探して修正してください。"
+          elif [ "$FAILED_WORKFLOW" = "GAS Lint Check" ]; then
+            CHECK_FUNC="run_gas_lint"
+            FIX_PROMPT="gas-lint.ymlのチェックでES5非準拠コード（const/let使用）が検出されたか、appsscript.jsonが不足しています。gasフォルダ内の.jsファイルでconst/letをvarに修正し、不足しているappsscript.jsonがあれば追加してください。"
+          else
+            echo "未対応のワークフロー: $FAILED_WORKFLOW"
+            exit 1
+          fi
+
+          # --- エラー内容を取得 ---
+          capture_errors() {
+            if [ "$FAILED_WORKFLOW" = "Security Check" ]; then
+              grep -r -E "EBAY_CLIENT_ID=[A-Za-z0-9]|EBAY_CLIENT_SECRET=[A-Za-z0-9]|refresh_token=[A-Za-z0-9]|access_token=[A-Za-z0-9]|private_key" . \
+                --exclude-dir=.git --exclude-dir=.github --exclude-dir=node_modules 2>/dev/null || true
+            else
+              find gas -name "*.js" -type f -exec grep -l -E '\b(const|let)\b' {} \; 2>/dev/null || true
+            fi
+          }
+
+          # --- 修正ループ ---
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "========================================="
+            echo "🔧 修正試行 $i/$MAX_ATTEMPTS"
+            echo "========================================="
+
+            # エラー内容を取得してプロンプトに含める
+            ERROR_OUTPUT=$(capture_errors)
+            FULL_PROMPT="${FIX_PROMPT}
+
+          以下が検出されたエラーです:
+          ${ERROR_OUTPUT}"
+
+            # Claude Code で自動修正
+            claude -p "$FULL_PROMPT" \
+              --allowedTools Edit,Write,Read,Bash,Glob,Grep \
+              --max-turns 10 \
+              || true
+
+            # 再チェック
+            if $CHECK_FUNC; then
+              echo "✅ チェック通過"
+
+              # 変更をコミット＆プッシュ
+              git add -A
+              if git diff --cached --quiet; then
+                echo "変更なし（既に修正済み）"
+              else
+                COMMIT_MSG="fix: ${FAILED_WORKFLOW}の自動修正（試行${i}回目）"
+                git commit -m "$COMMIT_MSG"
+                git push origin develop
+              fi
+
+              # 修正内容のサマリーを保存
+              FIX_SUMMARY=$(git log -1 --pretty=format:"%s" 2>/dev/null || echo "自動修正完了")
+              COMMIT_URL="${{ github.server_url }}/${{ github.repository }}/commit/$(git rev-parse HEAD)"
+              echo "fix_result=success" >> "$GITHUB_OUTPUT"
+              echo "fix_summary=${FIX_SUMMARY}" >> "$GITHUB_OUTPUT"
+              echo "commit_url=${COMMIT_URL}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "❌ チェック未通過（試行 $i/$MAX_ATTEMPTS）"
+          done
+
+          # 3回失敗
+          echo "fix_result=failure" >> "$GITHUB_OUTPUT"
+          echo "error_detail=${FAILED_WORKFLOW}の自動修正が${MAX_ATTEMPTS}回失敗しました" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Discord通知（成功）
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_AUDIT }}
+        run: |
+          PAYLOAD=$(cat <<DISCORD_EOF
+          {
+            "embeds": [{
+              "title": "✅ 自動修正完了",
+              "color": 5763719,
+              "fields": [
+                { "name": "リポジトリ", "value": "${{ github.repository }}", "inline": true },
+                { "name": "ブランチ", "value": "develop", "inline": true },
+                { "name": "内容", "value": "${{ steps.auto-fix.outputs.fix_summary }}" },
+                { "name": "リンク", "value": "${{ steps.auto-fix.outputs.commit_url }}" }
+              ]
+            }]
+          }
+          DISCORD_EOF
+          )
+          curl -sS -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
+
+      - name: Discord通知（失敗）
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_AUDIT }}
+        run: |
+          ACTIONS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          PAYLOAD=$(cat <<DISCORD_EOF
+          {
+            "embeds": [{
+              "title": "❌ 手動対応が必要",
+              "color": 15548997,
+              "fields": [
+                { "name": "リポジトリ", "value": "${{ github.repository }}", "inline": true },
+                { "name": "ブランチ", "value": "develop", "inline": true },
+                { "name": "問題", "value": "${{ github.event.workflow_run.name }}の自動修正が3回失敗しました" },
+                { "name": "リンク", "value": "${ACTIONS_URL}" }
+              ]
+            }]
+          }
+          DISCORD_EOF
+          )
+          curl -sS -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"

@@ -1,0 +1,26 @@
+name: Protect Main Branch
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  check-direct-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if push is from bot
+        id: check-bot
+        run: |
+          if [[ "${{ github.actor }}" == *"[bot]"* ]]; then
+            echo "is_bot=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_bot=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fail on direct push to main
+        if: steps.check-bot.outputs.is_bot == 'false'
+        run: |
+          echo "❌ mainブランチへの直接pushは禁止されています"
+          echo "developブランチで作業してからPRを作成してください"
+          exit 1

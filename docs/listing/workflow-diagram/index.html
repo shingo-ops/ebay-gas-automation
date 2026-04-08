@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eBay出品ツール - 業務フロー</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="presentation">
+        <!-- ヘッダー -->
+        <header class="presentation-header">
+            <div class="header-content">
+                <h1>eBay出品ツール 業務フロー</h1>
+                <p class="subtitle">リサーチから出品完了・データ保管まで</p>
+            </div>
+            <div class="header-meta">
+                <span>2026.03.11</span>
+            </div>
+        </header>
+
+        <!-- メインコンテンツ -->
+        <main class="presentation-main">
+            <div class="two-column-layout">
+                <!-- 左カラム: プロセス概要 -->
+                <aside class="process-overview">
+                    <h2 class="overview-title">プロセス概要</h2>
+                    <div class="process-list">
+                        <div class="process-step">
+                            <div class="step-number">01</div>
+                            <div class="step-content">
+                                <h3>リサーチフェーズ</h3>
+                                <p>市場調査・価格分析・利益率計算を実施し、出品商品を選定</p>
+                            </div>
+                        </div>
+
+                        <div class="process-step">
+                            <div class="step-number">02</div>
+                            <div class="step-content">
+                                <h3>自動化（第1弾）</h3>
+                                <p>自動処理で出品シートに情報を入力</p>
+                            </div>
+                        </div>
+
+                        <div class="process-step">
+                            <div class="step-number">03</div>
+                            <div class="step-content">
+                                <h3>出品準備</h3>
+                                <p>商品情報確認・画像設定・価格調整</p>
+                            </div>
+                        </div>
+
+                        <div class="process-step">
+                            <div class="step-number">04</div>
+                            <div class="step-content">
+                                <h3>自動化（第2弾）</h3>
+                                <p>データファイル生成と並行処理の実行</p>
+                            </div>
+                        </div>
+
+                        <div class="process-step highlight">
+                            <div class="step-number">05</div>
+                            <div class="step-content">
+                                <h3>並行処理①</h3>
+                                <p>セルスタ経由でeBayに出品</p>
+                            </div>
+                        </div>
+
+                        <div class="process-step highlight">
+                            <div class="step-number">06</div>
+                            <div class="step-content">
+                                <h3>並行処理②</h3>
+                                <p>データ保管庫にバックアップ保存</p>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- 右カラム: ビジュアルフロー -->
+                <section class="visual-flow">
+                    <h2 class="flow-title">業務フロー図</h2>
+
+                    <!-- ステップ1: リサーチ作業者 -->
+                    <div class="flow-step">
+                        <div class="step-icon-large blue">
+                            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="32" cy="32" r="12" fill="#FFFFFF"/>
+                                <path d="M32 20C26.48 20 22 24.48 22 30C22 35.52 26.48 40 32 40C37.52 40 42 35.52 42 30C42 24.48 37.52 20 32 20ZM32 36C28.69 36 26 33.31 26 30C26 26.69 28.69 24 32 24C35.31 24 38 26.69 38 30C38 33.31 35.31 36 32 36Z" fill="#FFFFFF"/>
+                                <path d="M32 42C23 42 16 37 16 37V44H48V37C48 37 41 42 32 42Z" fill="#FFFFFF"/>
+                            </svg>
+                        </div>
+                        <div class="step-info">
+                            <h3>リサーチ作業者</h3>
+                            <p>商品を調べて、利益が出るか計算します</p>
+                        </div>
+                    </div>
+
+                    <!-- 矢印 -->
+                    <div class="flow-arrow">
+                        <div class="arrow-line"></div>
+                        <div class="arrow-head"></div>
+                        <span class="arrow-label">自動処理</span>
+                    </div>
+
+                    <!-- ステップ2: 出品シート出力 -->
+                    <div class="flow-step">
+                        <div class="step-icon-large purple">
+                            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="16" y="12" width="32" height="40" rx="2" fill="#FFFFFF"/>
+                                <line x1="20" y1="20" x2="44" y2="20" stroke="#8B5CF6" stroke-width="2"/>
+                                <line x1="20" y1="26" x2="44" y2="26" stroke="#8B5CF6" stroke-width="2"/>
+                                <line x1="20" y1="32" x2="44" y2="32" stroke="#8B5CF6" stroke-width="2"/>
+                                <line x1="20" y1="38" x2="38" y2="38" stroke="#8B5CF6" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <div class="step-info">
+                            <h3>出品シート</h3>
+                            <p>商品情報が自動的にシートに入力されます</p>
+                        </div>
+                    </div>
+
+                    <!-- 矢印 -->
+                    <div class="flow-arrow">
+                        <div class="arrow-line"></div>
+                        <div class="arrow-head"></div>
+                        <span class="arrow-label">確認・編集</span>
+                    </div>
+
+                    <!-- ステップ3: 出品作業担当者 -->
+                    <div class="flow-step">
+                        <div class="step-icon-large green">
+                            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="32" cy="32" r="12" fill="#FFFFFF"/>
+                                <path d="M32 20C26.48 20 22 24.48 22 30C22 35.52 26.48 40 32 40C37.52 40 42 35.52 42 30C42 24.48 37.52 20 32 20ZM32 36C28.69 36 26 33.31 26 30C26 26.69 28.69 24 32 24C35.31 24 38 26.69 38 30C38 33.31 35.31 36 32 36Z" fill="#FFFFFF"/>
+                                <path d="M32 42C23 42 16 37 16 37V44H48V37C48 37 41 42 32 42Z" fill="#FFFFFF"/>
+                                <circle cx="42" cy="22" r="5" fill="#FFF" stroke="#10B981" stroke-width="2"/>
+                                <path d="M40 22L41.5 23.5L44 21" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="step-info">
+                            <h3>出品作業担当者</h3>
+                            <p>内容を確認して、画像や価格を調整します</p>
+                        </div>
+                    </div>
+
+                    <!-- 矢印 -->
+                    <div class="flow-arrow">
+                        <div class="arrow-line"></div>
+                        <div class="arrow-head"></div>
+                        <span class="arrow-label">自動処理</span>
+                    </div>
+
+                    <!-- ステップ4: データファイル生成（分岐点） -->
+                    <div class="flow-step branch-point">
+                        <div class="step-icon-large orange">
+                            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="18" y="20" width="28" height="24" rx="2" fill="#FFFFFF"/>
+                                <path d="M28 28L32 24L36 28M32 24V36" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="step-info">
+                            <h3>データファイル生成</h3>
+                            <p>ここから2つの処理が同時に進みます</p>
+                        </div>
+                    </div>
+
+                    <!-- 分岐矢印 -->
+                    <div class="branch-arrows">
+                        <div class="branch-left">
+                            <div class="arrow-line"></div>
+                            <div class="arrow-head"></div>
+                            <span class="arrow-label">並行処理①</span>
+                        </div>
+                        <div class="branch-right">
+                            <div class="arrow-line"></div>
+                            <div class="arrow-head"></div>
+                            <span class="arrow-label">並行処理②</span>
+                        </div>
+                    </div>
+
+                    <!-- 並行処理 -->
+                    <div class="parallel-flow">
+                        <!-- 左側: セルスタアップロード -->
+                        <div class="parallel-path">
+                            <div class="flow-step">
+                                <div class="step-icon-large pink">
+                                    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="32" cy="32" r="20" fill="#FFFFFF"/>
+                                        <path d="M32 24V32L38 36" stroke="#EC4899" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                <div class="step-info">
+                                    <h3>セルスタアップロード</h3>
+                                    <p>セルスタ経由でeBayに出品</p>
+                                </div>
+                            </div>
+
+                            <div class="flow-arrow-small">
+                                <div class="arrow-line"></div>
+                                <div class="arrow-head"></div>
+                            </div>
+
+                            <div class="flow-step">
+                                <div class="step-icon-large success">
+                                    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="32" cy="32" r="20" fill="#FFFFFF"/>
+                                        <path d="M22 32L28 38L42 24" stroke="#10B981" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                <div class="step-info">
+                                    <h3>eBay出品完了</h3>
+                                    <p>商品が出品されました</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 右側: データベース保存 -->
+                        <div class="parallel-path">
+                            <div class="flow-step">
+                                <div class="step-icon-large indigo">
+                                    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <ellipse cx="32" cy="24" rx="14" ry="5" fill="#FFFFFF"/>
+                                        <path d="M18 24V40C18 42.7614 24.2686 45 32 45C39.7314 45 46 42.7614 46 40V24" stroke="#FFFFFF" stroke-width="2"/>
+                                        <ellipse cx="32" cy="32" rx="14" ry="5" fill="#FFFFFF" opacity="0.7"/>
+                                    </svg>
+                                </div>
+                                <div class="step-info">
+                                    <h3>データ保管庫に保存</h3>
+                                    <p>出品情報をバックアップ</p>
+                                </div>
+                            </div>
+
+                            <div class="flow-arrow-small">
+                                <div class="arrow-line"></div>
+                                <div class="arrow-head"></div>
+                            </div>
+
+                            <div class="flow-step">
+                                <div class="step-icon-large success">
+                                    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="32" cy="32" r="20" fill="#FFFFFF"/>
+                                        <path d="M22 32L28 38L42 24" stroke="#10B981" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                <div class="step-info">
+                                    <h3>データ保管完了</h3>
+                                    <p>バックアップが保存されました</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- フッター -->
+        <footer class="presentation-footer">
+            <div class="footer-left">
+                <span>eBay出品ツール 業務フロー</span>
+            </div>
+            <div class="footer-right">
+                <span>Confidential</span>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

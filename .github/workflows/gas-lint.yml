@@ -1,0 +1,68 @@
+name: GAS Lint Check
+
+on:
+  pull_request:
+    paths:
+      - 'gas/**/*.js'
+      - 'gas/**/appsscript.json'
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'gas/**/*.js'
+      - 'gas/**/appsscript.json'
+
+jobs:
+  lint-gas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check ES5 compliance
+        run: |
+          echo "🔍 GASファイルのES5準拠をチェック中..."
+
+          FOUND=0
+          while IFS= read -r file; do
+            if grep -n -E '\b(const|let)\b' "$file"; then
+              echo "❌ $file でconst/letが検出されました"
+              FOUND=1
+            fi
+          done < <(find gas -name "*.js" -type f)
+
+          if [ $FOUND -eq 1 ]; then
+            echo ""
+            echo "❌ GASはES5で書く必要があります。const/letではなくvarを使ってください"
+            exit 1
+          fi
+
+          echo "✅ ES5準拠チェック完了"
+
+      - name: Check appsscript.json existence
+        run: |
+          echo "🔍 appsscript.json の存在確認中..."
+
+          REQUIRED_FILES=(
+            "gas/listing/standalone/appsscript.json"
+            "gas/listing/container/appsscript.json"
+            "gas/research/container/appsscript.json"
+            "gas/ebay-db/container/appsscript.json"
+          )
+
+          MISSING=0
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ 必須ファイルが見つかりません: $file"
+              MISSING=1
+            fi
+          done
+
+          if [ $MISSING -eq 1 ]; then
+            echo ""
+            echo "❌ 必須のappsscript.jsonファイルが存在しません"
+            exit 1
+          fi
+
+          echo "✅ すべてのappsscript.jsonファイルが存在します"

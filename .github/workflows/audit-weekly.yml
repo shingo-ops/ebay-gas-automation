@@ -1,0 +1,123 @@
+name: Weekly Audit
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # 毎週月曜 UTC 0:00（JST 9:00）
+  workflow_dispatch:
+
+jobs:
+  weekly-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: コード品質チェック
+        id: quality
+        run: |
+          PROBLEM_COUNT=0
+
+          # --- 1. const/letチェック ---
+          while IFS= read -r file; do
+            if grep -q -E '\b(const|let)\b' "$file" 2>/dev/null; then
+              PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+            fi
+          done < <(find gas -name "*.js" -type f 2>/dev/null)
+
+          # --- 2. appsscript.json存在チェック ---
+          REQUIRED_FILES=(
+            "gas/listing/standalone/appsscript.json"
+            "gas/listing/container/appsscript.json"
+            "gas/research/container/appsscript.json"
+            "gas/ebay-db/container/appsscript.json"
+          )
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+            fi
+          done
+
+          # --- 3. APIキー混入チェック ---
+          PATTERNS=(
+            "EBAY_CLIENT_ID=[A-Za-z0-9]"
+            "EBAY_CLIENT_SECRET=[A-Za-z0-9]"
+            "refresh_token=[A-Za-z0-9]"
+            "access_token=[A-Za-z0-9]"
+            "private_key"
+          )
+          for pattern in "${PATTERNS[@]}"; do
+            if grep -r -E "$pattern" . \
+                 --exclude-dir=.git \
+                 --exclude-dir=.github \
+                 --exclude-dir=node_modules > /dev/null 2>&1; then
+              PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+            fi
+          done
+
+          # --- 4. .gitignoreチェック ---
+          if [ ! -f ".gitignore" ] || ! grep -q "\.env" .gitignore 2>/dev/null; then
+            PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+          fi
+
+          if [ $PROBLEM_COUNT -eq 0 ]; then
+            echo "quality=✅ 問題なし" >> "$GITHUB_OUTPUT"
+          else
+            echo "quality=❌ ${PROBLEM_COUNT}件の問題あり" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: ブランチ差分・PR情報取得
+        id: repo-stats
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TODAY=$(date -u +"%Y-%m-%d")
+          echo "audit_date=${TODAY}" >> "$GITHUB_OUTPUT"
+
+          # develop→main の未マージコミット数
+          git fetch origin main
+          UNMERGED=$(git rev-list --count origin/main..origin/develop 2>/dev/null || echo "0")
+          echo "unmerged_count=${UNMERGED}" >> "$GITHUB_OUTPUT"
+
+          # オープンPR数
+          OPEN_PRS=$(gh pr list --state open --json number --jq length 2>/dev/null || echo "0")
+          echo "open_prs=${OPEN_PRS}" >> "$GITHUB_OUTPUT"
+
+          # GASコード総行数
+          TOTAL_LINES=0
+          while IFS= read -r file; do
+            LINES=$(wc -l < "$file" 2>/dev/null || echo "0")
+            TOTAL_LINES=$((TOTAL_LINES + LINES))
+          done < <(find gas -name "*.js" -type f 2>/dev/null)
+          echo "total_lines=${TOTAL_LINES}" >> "$GITHUB_OUTPUT"
+
+      - name: Discord通知
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_AUDIT }}
+        run: |
+          QUALITY="${{ steps.quality.outputs.quality }}"
+          if echo "$QUALITY" | grep -q "✅"; then
+            COLOR=5763719
+          else
+            COLOR=15548997
+          fi
+
+          PAYLOAD=$(cat <<DISCORD_EOF
+          {
+            "embeds": [{
+              "title": "【週次監査】ebay-gas-automation",
+              "color": ${COLOR},
+              "fields": [
+                { "name": "日時", "value": "${{ steps.repo-stats.outputs.audit_date }}", "inline": true },
+                { "name": "コード品質", "value": "${QUALITY}", "inline": true },
+                { "name": "develop→main未マージ", "value": "${{ steps.repo-stats.outputs.unmerged_count }}件", "inline": true },
+                { "name": "オープンPR", "value": "${{ steps.repo-stats.outputs.open_prs }}件", "inline": true },
+                { "name": "GASコード総行数", "value": "${{ steps.repo-stats.outputs.total_lines }}行", "inline": true }
+              ]
+            }]
+          }
+          DISCORD_EOF
+          )
+          curl -sS -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"

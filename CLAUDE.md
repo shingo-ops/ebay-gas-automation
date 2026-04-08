@@ -51,6 +51,10 @@ Pythonスクリプトを管理するリポジトリ。
   → ebay-db コンテナバインドGAS（開発）に自動でclasp pushされる
 - developブランチへのマージ時は各GASの開発用に自動デプロイされる
 
+## 仕様書・ドキュメントの場所
+- 出品ツール仕様書: docs/listing/
+- リサーチツール仕様書: docs/research/
+
 ## @claudeへの指示の出し方
 - IssueまたはPRのコメントで @claude と書いて指示する
 - 例: @claude getConditionsByGroupId関数を実装してください
