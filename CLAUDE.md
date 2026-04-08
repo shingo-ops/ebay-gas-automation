@@ -40,6 +40,17 @@ Pythonスクリプトを管理するリポジトリ。
 - GASでletやconstを使わない（ES5非対応）
 - category_masterを手動で削除しない
 
+## デプロイ方法
+- gas/listing/standalone/ のファイルを変更してmainにマージ
+  → listing スタンドアロンGAS（本番）に自動でclasp pushされる
+- gas/listing/container/ のファイルを変更してmainにマージ
+  → listing コンテナバインドGAS（本番）に自動でclasp pushされる
+- gas/research/container/ のファイルを変更してmainにマージ
+  → research コンテナバインドGAS（本番）に自動でclasp pushされる
+- gas/ebay-db/container/ のファイルを変更してdevelopにマージ
+  → ebay-db コンテナバインドGAS（開発）に自動でclasp pushされる
+- developブランチへのマージ時は各GASの開発用に自動デプロイされる
+
 ## @claudeへの指示の出し方
 - IssueまたはPRのコメントで @claude と書いて指示する
 - 例: @claude getConditionsByGroupId関数を実装してください

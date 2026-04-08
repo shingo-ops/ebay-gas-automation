@@ -1,0 +1,127 @@
+name: Deploy GAS via clasp
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'gas/listing/standalone/**'
+      - 'gas/listing/container/**'
+      - 'gas/research/container/**'
+      - 'gas/ebay-db/container/**'
+
+jobs:
+  deploy-listing-standalone:
+    runs-on: ubuntu-latest
+    if: contains(toJSON(github.event.commits.*.modified), 'gas/listing/standalone/') || contains(toJSON(github.event.commits.*.added), 'gas/listing/standalone/') || contains(toJSON(github.event.commits.*.removed), 'gas/listing/standalone/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Restore clasp credentials
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+
+      - name: Set scriptId and deploy
+        run: |
+          cd gas/listing/standalone
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            SCRIPT_ID="${{ secrets.LISTING_SA_PROD }}"
+          else
+            SCRIPT_ID="${{ secrets.LISTING_SA_DEV }}"
+          fi
+          sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          clasp push
+
+  deploy-listing-container:
+    runs-on: ubuntu-latest
+    if: contains(toJSON(github.event.commits.*.modified), 'gas/listing/container/') || contains(toJSON(github.event.commits.*.added), 'gas/listing/container/') || contains(toJSON(github.event.commits.*.removed), 'gas/listing/container/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Restore clasp credentials
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+
+      - name: Set scriptId and deploy
+        run: |
+          cd gas/listing/container
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            SCRIPT_ID="${{ secrets.LISTING_CB_PROD }}"
+          else
+            SCRIPT_ID="${{ secrets.LISTING_CB_DEV }}"
+          fi
+          sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          clasp push
+
+  deploy-research-container:
+    runs-on: ubuntu-latest
+    if: contains(toJSON(github.event.commits.*.modified), 'gas/research/container/') || contains(toJSON(github.event.commits.*.added), 'gas/research/container/') || contains(toJSON(github.event.commits.*.removed), 'gas/research/container/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Restore clasp credentials
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+
+      - name: Set scriptId and deploy
+        run: |
+          cd gas/research/container
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            SCRIPT_ID="${{ secrets.RESEARCH_CB_PROD }}"
+          else
+            SCRIPT_ID="${{ secrets.RESEARCH_CB_DEV }}"
+          fi
+          sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          clasp push
+
+  deploy-ebay-db-container:
+    runs-on: ubuntu-latest
+    if: |
+      github.ref_name == 'develop' &&
+      (contains(toJSON(github.event.commits.*.modified), 'gas/ebay-db/container/') || contains(toJSON(github.event.commits.*.added), 'gas/ebay-db/container/') || contains(toJSON(github.event.commits.*.removed), 'gas/ebay-db/container/'))
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Restore clasp credentials
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+
+      - name: Set scriptId and deploy
+        run: |
+          cd gas/ebay-db/container
+          SCRIPT_ID="${{ secrets.EBAY_DB_CB_DEV }}"
+          sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          clasp push
