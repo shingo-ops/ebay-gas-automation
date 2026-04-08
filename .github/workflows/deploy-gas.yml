@@ -1,0 +1,56 @@
+name: Deploy GAS via clasp
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'gas/standalone/**'
+      - 'gas/container/**'
+
+jobs:
+  deploy-standalone:
+    runs-on: ubuntu-latest
+    if: contains(toJSON(github.event.commits.*.modified), 'gas/standalone/') || contains(toJSON(github.event.commits.*.added), 'gas/standalone/') || contains(toJSON(github.event.commits.*.removed), 'gas/standalone/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Restore clasp credentials
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+
+      - name: Deploy standalone GAS
+        run: |
+          cd gas/standalone
+          clasp push
+
+  deploy-container:
+    runs-on: ubuntu-latest
+    if: contains(toJSON(github.event.commits.*.modified), 'gas/container/') || contains(toJSON(github.event.commits.*.added), 'gas/container/') || contains(toJSON(github.event.commits.*.removed), 'gas/container/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Restore clasp credentials
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+
+      - name: Deploy container-bound GAS
+        run: |
+          cd gas/container
+          clasp push

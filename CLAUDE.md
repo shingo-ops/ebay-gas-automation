@@ -40,6 +40,12 @@ Pythonスクリプトを管理するリポジトリ。
 - GASでletやconstを使わない（ES5非対応）
 - category_masterを手動で削除しない
 
+## デプロイ方法
+- gas/standalone/ のファイルを変更してmainにマージ
+  → スタンドアロンGASに自動でclasp pushされる
+- gas/container/ のファイルを変更してmainにマージ
+  → コンテナバインドGASに自動でclasp pushされる
+
 ## @claudeへの指示の出し方
 - IssueまたはPRのコメントで @claude と書いて指示する
 - 例: @claude getConditionsByGroupId関数を実装してください
