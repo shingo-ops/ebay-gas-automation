@@ -9,10 +9,10 @@
  */
 function notifyDiscord(message) {
   var config = getConfig();
-  var webhook = config['DISCORD_WEBHOOK'];
+  var webhook = config['DISCORD_WEBHOOK_EBAYDB'];
 
   if (!webhook) {
-    Logger.log('⚠️ DISCORD_WEBHOOK が未設定のため通知をスキップ');
+    Logger.log('⚠️ DISCORD_WEBHOOK_EBAYDB が未設定のため通知をスキップ');
     return;
   }
 
