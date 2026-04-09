@@ -1,15 +1,22 @@
 """
 fetch_conditions.py
 eBay Taxonomy API の getItemConditionPolicies で各カテゴリのコンディションを取得
-category_raw.json の conditions_json 列を補完して出力
+
+戦略:
+  - マーケットごとに最初の SAMPLE_PER_MARKET カテゴリのみ API 取得（デフォルト100）
+  - eBay のコンディション ID は市場内で繰り返されるため、サンプルで全種類を網羅できる
+  - サンプル外のカテゴリは conditions_json を空のまま（integrity check はスキップされる）
+  - condition_ja_map のユニーク ID 収集には十分
 """
 
 import os
 import json
 import time
 import requests
+from collections import defaultdict
 
 TAXONOMY_API = "https://api.ebay.com/commerce/taxonomy/v1"
+SAMPLE_PER_MARKET = int(os.environ.get("CONDITIONS_SAMPLE_PER_MARKET", "100"))
 
 
 def get_access_token() -> str:
@@ -60,7 +67,7 @@ def fetch_conditions(token: str, category_tree_id: str, category_id: str) -> lis
 
 
 def main():
-    print("=== fetch_conditions.py 開始 ===")
+    print(f"=== fetch_conditions.py 開始 (サンプル上限: {SAMPLE_PER_MARKET}/マーケット) ===")
 
     input_path = os.environ.get("OUTPUT_DIR", ".") + "/category_raw.json"
     with open(input_path, encoding="utf-8") as f:
@@ -68,20 +75,30 @@ def main():
 
     token = get_access_token()
 
-    # カテゴリツリーごとにまとめて処理（APIコール最小化）
+    # マーケットプレイスごとのサンプル数カウント
+    market_counts: dict[str, int] = defaultdict(int)
     processed = 0
+    skipped = 0
     errors = 0
 
     for row in rows:
         tree_id = row["category_tree_id"]
         cat_id = row["category_id"]
+        mp_id = row["marketplace_id"]
 
-        if row.get("conditions_json"):
-            continue  # 取得済みはスキップ
+        # 既取得済みはスキップ
+        if row.get("conditions_json") and row["conditions_json"] != "[]":
+            continue
+
+        # マーケットごとのサンプル上限チェック
+        if market_counts[mp_id] >= SAMPLE_PER_MARKET:
+            skipped += 1
+            continue
 
         try:
             conditions = fetch_conditions(token, tree_id, cat_id)
             row["conditions_json"] = json.dumps(conditions, ensure_ascii=False)
+            market_counts[mp_id] += 1
             processed += 1
         except Exception as e:
             errors += 1
@@ -92,14 +109,17 @@ def main():
         # レート制限対策
         time.sleep(0.1)
 
-        if processed % 1000 == 0 and processed > 0:
-            print(f"  進捗: {processed}/{len(rows)}")
+        if processed % 50 == 0 and processed > 0:
+            counts_str = ", ".join(f"{k}={v}" for k, v in market_counts.items())
+            print(f"  進捗: {processed} 件取得 ({counts_str})")
 
     output_path = os.environ.get("OUTPUT_DIR", ".") + "/category_raw.json"
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(rows, f, ensure_ascii=False, indent=2)
 
-    print(f"=== 完了: {processed} 件処理, {errors} 件エラー → {output_path} ===")
+    print(f"=== 完了: {processed} 件取得, {skipped} 件スキップ(上限超), {errors} 件エラー ===")
+    for mp, count in market_counts.items():
+        print(f"  {mp}: {count} カテゴリ取得")
 
 
 if __name__ == "__main__":
