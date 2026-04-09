@@ -95,28 +95,54 @@ def build_category_rows(aspects: list[dict], marketplace_id: str, category_tree_
         cat_name = category.get("categoryName") or item.get("categoryName", "")
         aspect_list = item.get("aspects", [])
 
-        required, recommended, optional = [], [], []
+        required_names, recommended_names, optional_names = [], [], []
+        aspect_values: dict[str, list[str]] = {}
+        aspect_modes: dict[str, str] = {}
+        multi_value_names: list[str] = []
+
         for asp in aspect_list:
-            usage = asp.get("aspectConstraint", {}).get("aspectUsage", "OPTIONAL")
-            entry = {
-                "name": asp.get("localizedAspectName", ""),
-                "values": [v.get("localizedValue", "") for v in asp.get("aspectValues", [])[:50]],
-            }
-            if usage == "REQUIRED":
-                required.append(entry)
+            constraint    = asp.get("aspectConstraint", {})
+            is_required   = constraint.get("aspectRequired", False)
+            usage         = constraint.get("aspectUsage", "OPTIONAL")
+            mode          = constraint.get("aspectMode", "")
+            cardinality   = constraint.get("itemToAspectCardinality", "SINGLE")
+            name          = asp.get("localizedAspectName", "")
+            if not name:
+                continue
+
+            # SELECTION_ONLY の場合のみ値リストを格納（FREE_TEXT は空欄のまま）
+            if mode == "SELECTION_ONLY":
+                vals = [
+                    v.get("localizedValue", "")
+                    for v in asp.get("aspectValues", [])
+                    if v.get("localizedValue")
+                ][:50]
+                if vals:
+                    aspect_values[name] = vals
+
+            aspect_modes[name] = mode
+
+            if cardinality == "MULTI":
+                multi_value_names.append(name)
+
+            if is_required or usage == "REQUIRED":
+                required_names.append(name)
             elif usage == "RECOMMENDED":
-                recommended.append(entry)
+                recommended_names.append(name)
             else:
-                optional.append(entry)
+                optional_names.append(name)
 
         rows.append({
-            "marketplace_id": marketplace_id,
-            "category_tree_id": category_tree_id,
-            "category_id": cat_id,
-            "category_name": cat_name,
-            "required_specs_json": json.dumps(required, ensure_ascii=False),
-            "recommended_specs_json": json.dumps(recommended, ensure_ascii=False),
-            "optional_specs_json": json.dumps(optional, ensure_ascii=False),
+            "marketplace_id":           marketplace_id,
+            "category_tree_id":         category_tree_id,
+            "category_id":              cat_id,
+            "category_name":            cat_name,
+            "required_specs_json":      json.dumps(required_names,    ensure_ascii=False),
+            "recommended_specs_json":   json.dumps(recommended_names, ensure_ascii=False),
+            "optional_specs_json":      json.dumps(optional_names,    ensure_ascii=False),
+            "aspect_values_json":       json.dumps(aspect_values,     ensure_ascii=False),
+            "aspect_modes_json":        json.dumps(aspect_modes,      ensure_ascii=False),
+            "multi_value_aspects_json": json.dumps(multi_value_names, ensure_ascii=False),
             "conditions_json": "",      # fetch_conditions.py で補完
             "fvf_rate": "",             # extract_fvf.py で補完
             "last_synced": "",          # generate_csv.py で補完

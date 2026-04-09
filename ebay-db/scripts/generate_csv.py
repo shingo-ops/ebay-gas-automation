@@ -68,6 +68,8 @@ def generate_category_master(rows: list[dict], fvf_rates: dict) -> None:
     """
     fieldnames = [
         "marketplace_id", "category_tree_id", "category_id", "category_name",
+        "required_specs_json", "recommended_specs_json", "optional_specs_json",
+        "aspect_values_json", "aspect_modes_json", "multi_value_aspects_json",
         "conditions_json", "fvf_rate", "last_synced",
     ]
 
@@ -96,13 +98,19 @@ def generate_category_master(rows: list[dict], fvf_rates: dict) -> None:
                         break
 
                 writer.writerow({
-                    "marketplace_id":   mp,
-                    "category_tree_id": row.get("category_tree_id", ""),
-                    "category_id":      row.get("category_id", ""),
-                    "category_name":    cat_name,
-                    "conditions_json":  row.get("conditions_json", "[]"),
-                    "fvf_rate":         fvf_rate,
-                    "last_synced":      TODAY,
+                    "marketplace_id":           mp,
+                    "category_tree_id":         row.get("category_tree_id", ""),
+                    "category_id":              row.get("category_id", ""),
+                    "category_name":            cat_name,
+                    "required_specs_json":      row.get("required_specs_json",      "[]"),
+                    "recommended_specs_json":   row.get("recommended_specs_json",   "[]"),
+                    "optional_specs_json":      row.get("optional_specs_json",      "[]"),
+                    "aspect_values_json":       row.get("aspect_values_json",       "{}"),
+                    "aspect_modes_json":        row.get("aspect_modes_json",        "{}"),
+                    "multi_value_aspects_json": row.get("multi_value_aspects_json", "[]"),
+                    "conditions_json":          row.get("conditions_json",          "[]"),
+                    "fvf_rate":                 fvf_rate,
+                    "last_synced":              TODAY,
                 })
 
         print(f"  {output_path}: {len(mp_rows)} 行")
