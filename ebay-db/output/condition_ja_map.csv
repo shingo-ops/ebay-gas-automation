@@ -1,14 +1,14 @@
 condition_id,condition_name,condition_enum,ja_display,ja_description,last_synced
-1000,Brand New,NEW,,,2026-04-09
-1500,Opened – never used,NEW_OTHER,,,2026-04-09
-2500,Seller refurbished,SELLER_REFURBISHED,,,2026-04-09
-3000,Used,USED_EXCELLENT,,,2026-04-09
-7000,For parts or not working,FOR_PARTS_OR_NOT_WORKING,,,2026-04-09
-1750,New with defects,NEW_WITH_DEFECTS,,,2026-04-09
-2750,Like new,LIKE_NEW,,,2026-04-09
-4000,Very good,USED_VERY_GOOD,,,2026-04-09
-5000,Good,USED_GOOD,,,2026-04-09
-6000,Acceptable,USED_ACCEPTABLE,,,2026-04-09
-2990,Pre-owned - Excellent,PRE_OWNED_EXCELLENT,,,2026-04-09
-3010,Pre-owned - Fair,PRE_OWNED_FAIR,,,2026-04-09
+1000,Brand New,NEW,新品、未使用,,2026-04-09
+1500,Opened – never used,NEW_OTHER,未使用に近い,,2026-04-09
+2500,Seller refurbished,SELLER_REFURBISHED,セラー整備済み,,2026-04-09
+3000,Used,USED_EXCELLENT,やや傷や汚れあり,,2026-04-09
+7000,For parts or not working,FOR_PARTS_OR_NOT_WORKING,ジャンク品（部品取り用）,,2026-04-09
+1750,New with defects,NEW_WITH_DEFECTS,新品、未使用（難あり）,,2026-04-09
+2750,Like new,LIKE_NEW,未使用に近い,,2026-04-09
+4000,Very good,USED_VERY_GOOD,目立った傷や汚れなし,,2026-04-09
+5000,Good,USED_GOOD,やや傷や汚れあり,,2026-04-09
+6000,Acceptable,USED_ACCEPTABLE,全体的に状態が悪い,,2026-04-09
+2990,Pre-owned - Excellent,PRE_OWNED_EXCELLENT,目立った傷や汚れなし,,2026-04-09
+3010,Pre-owned - Fair,PRE_OWNED_FAIR,傷や汚れあり,,2026-04-09
 1900,Unbenutzt,,,,2026-04-09
