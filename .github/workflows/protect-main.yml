@@ -11,12 +11,12 @@ jobs:
     steps:
       - name: Check if push should be skipped
         id: check-skip
+        env:
+          ACTOR: ${{ github.actor }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          IS_FORCED: ${{ github.event.forced }}
+          IS_CREATED: ${{ github.event.created }}
         run: |
-          ACTOR="${{ github.actor }}"
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-          IS_FORCED="${{ github.event.forced }}"
-          IS_CREATED="${{ github.event.created }}"
-
           # botによるpushはスキップ
           if [[ "$ACTOR" == *"[bot]"* ]]; then
             echo "skip=true" >> $GITHUB_OUTPUT
@@ -38,9 +38,9 @@ jobs:
           fi
 
           # PR経由のマージコミットはスキップ
-          if [[ "$COMMIT_MSG" == "Merge pull request"* ]]; then
+          if [[ "$COMMIT_MSG" == "Merge pull request"* ]] || [[ "$COMMIT_MSG" == "Merge branch"* ]]; then
             echo "skip=true" >> $GITHUB_OUTPUT
-            echo "reason=PR merge commit" >> $GITHUB_OUTPUT
+            echo "reason=PR merge commit: $COMMIT_MSG" >> $GITHUB_OUTPUT
             exit 0
           fi
 
