@@ -13,6 +13,11 @@ on:
         options:
           - 'false'
           - 'true'
+      run_function:
+        description: 'Step8 で実行する GAS 関数名'
+        required: false
+        default: 'importAndSync'
+        type: string
 
 jobs:
   sync-ebay-db:
@@ -169,13 +174,13 @@ jobs:
         working-directory: gas/ebay-db/container
         run: clasp push --force
 
-      # ─── Step8: GAS importAndSync 実行 ────────────────────
+      # ─── Step8: GAS 関数実行 ──────────────────────────────
       # GAS の6分実行制限でタイムアウトする場合があるが、CSV コミット(Step6)が
       # 完了していれば手動で GAS を実行しても同じ結果が得られるため non-fatal とする
-      - name: Step8 - Run GAS importAndSync (import / validate / transfer)
+      - name: Step8 - Run GAS ${{ inputs.run_function || 'importAndSync' }}
         continue-on-error: true
         working-directory: gas/ebay-db/container
-        run: clasp run importAndSync
+        run: clasp run ${{ inputs.run_function || 'importAndSync' }}
 
       - name: Notify failure to Discord
         if: failure()
