@@ -4,11 +4,19 @@
  *
  * エントリポイント: importAndSync()
  * clasp run importAndSync で GitHub Actions から呼び出す
+ *
+ * CSVファイル構成（GitHub raw URL から取得）:
+ *   category_master_EBAY_US.csv  → category_master_EBAY_US シート
+ *   category_master_EBAY_GB.csv  → category_master_EBAY_GB シート
+ *   category_master_EBAY_DE.csv  → category_master_EBAY_DE シート
+ *   category_master_EBAY_AU.csv  → category_master_EBAY_AU シート
+ *   condition_ja_map.csv         → condition_ja_map シート（全市場共通）
  */
+
+var CATEGORY_MARKETPLACES = ['EBAY_US', 'EBAY_GB', 'EBAY_DE', 'EBAY_AU'];
 
 /**
  * メイン処理（clasp run のエントリポイント）
- * §4.1 月次更新処理 Step4〜8 を実行
  */
 function importAndSync() {
   Logger.log('=== ebay-db 月次同期 開始 ===');
@@ -22,18 +30,26 @@ function importAndSync() {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // category_master / condition_ja_map シートが存在しない場合は自動作成
-  ['category_master', 'condition_ja_map'].forEach(function(name) {
+  // 各マーケットシートと condition_ja_map が存在しない場合は自動作成
+  CATEGORY_MARKETPLACES.forEach(function(mp) {
+    var name = 'category_master_' + mp;
     if (!ss.getSheetByName(name)) {
       ss.insertSheet(name);
       Logger.log(name + ' シートを新規作成しました');
     }
   });
+  if (!ss.getSheetByName('condition_ja_map')) {
+    ss.insertSheet('condition_ja_map');
+    Logger.log('condition_ja_map シートを新規作成しました');
+  }
 
-  var diffResult = { categoryAdded: 0, categoryRemoved: 0, categoryChanged: 0, conditionAdded: 0, conditionRemoved: 0 };
+  var diffResult = {
+    categoryAdded: 0, categoryRemoved: 0, categoryChanged: 0,
+    conditionAdded: 0, conditionRemoved: 0
+  };
 
   try {
-    // Step4: CSVインポート・差分検出
+    // Step4: CSVインポート・差分検出（マーケット別）
     Logger.log('[Step4] CSVインポート開始');
     diffResult = importCsvAndDetectDiff(ss);
     Logger.log('[Step4] 完了: ' + JSON.stringify(diffResult));
@@ -55,7 +71,6 @@ function importAndSync() {
       transferToServiceBook(ss, config);
       transferred = true;
 
-      // LAST_FULL_SYNC を更新
       var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
       PropertiesService.getScriptProperties().setProperty('LAST_FULL_SYNC', now);
       Logger.log('[Step7] 転記完了');
@@ -84,26 +99,32 @@ function importAndSync() {
 var GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/shingo-ops/bay-auto/main/ebay-db/output/';
 
 /**
- * GitHub リポジトリから CSV を取得してシートに書き込む
- * 差分を検出して sync_log に記録
+ * マーケット別 CSV をインポートして差分を返す
  * @param {Spreadsheet} ss
  * @returns {Object} diffResult
  */
 function importCsvAndDetectDiff(ss) {
-  var diffResult = { categoryAdded: 0, categoryRemoved: 0, categoryChanged: 0, conditionAdded: 0, conditionRemoved: 0 };
+  var diffResult = {
+    categoryAdded: 0, categoryRemoved: 0, categoryChanged: 0,
+    conditionAdded: 0, conditionRemoved: 0
+  };
 
-  // category_master.csv のインポート
-  try {
-    var catText = fetchCsvFromGitHub('category_master.csv');
-    var catDiff = importCsvToSheet(ss, catText, 'category_master');
-    diffResult.categoryAdded   = catDiff.added;
-    diffResult.categoryRemoved = catDiff.removed;
-    diffResult.categoryChanged = catDiff.changed;
-  } catch (e) {
-    Logger.log('⚠️ category_master.csv 取得失敗: ' + e.toString());
-  }
+  // マーケット別 category_master CSV をインポート
+  CATEGORY_MARKETPLACES.forEach(function(mp) {
+    var sheetName = 'category_master_' + mp;
+    var filename  = 'category_master_' + mp + '.csv';
+    try {
+      var text = fetchCsvFromGitHub(filename);
+      var diff = importCsvToSheet(ss, text, sheetName);
+      diffResult.categoryAdded   += diff.added;
+      diffResult.categoryRemoved += diff.removed;
+      diffResult.categoryChanged += diff.changed;
+    } catch (e) {
+      Logger.log('⚠️ ' + filename + ' 取得失敗: ' + e.toString());
+    }
+  });
 
-  // condition_ja_map.csv のインポート
+  // condition_ja_map CSV をインポート（全市場共通・1ファイル）
   try {
     var conText = fetchCsvFromGitHub('condition_ja_map.csv');
     var conDiff = importCsvToSheet(ss, conText, 'condition_ja_map');
@@ -150,15 +171,12 @@ function importCsvToSheet(ss, csvText, sheetName) {
     sheet = ss.insertSheet(sheetName);
   }
 
-  // 既存データ取得（差分検出用）
   var oldData = sheet.getLastRow() > 0 ? sheet.getDataRange().getValues() : [newData[0]];
   var diff = detectDiff(oldData, newData, sheetName);
 
-  // シートを上書き
   sheet.clearContents();
   sheet.getRange(1, 1, newData.length, newData[0].length).setValues(newData);
 
-  // ヘッダースタイル
   var headerRange = sheet.getRange(1, 1, 1, newData[0].length);
   headerRange.setBackground('#4285f4');
   headerRange.setFontColor('#ffffff');
@@ -181,17 +199,14 @@ function detectDiff(oldData, newData, sheetName) {
     return diff;
   }
 
-  // 1列目をキーとして比較
   var oldMap = {};
   for (var i = 1; i < oldData.length; i++) {
-    var key = String(oldData[i][0]);
-    oldMap[key] = oldData[i].join(',');
+    oldMap[String(oldData[i][0])] = oldData[i].join(',');
   }
 
   var newMap = {};
   for (var j = 1; j < newData.length; j++) {
-    var nkey = String(newData[j][0]);
-    newMap[nkey] = newData[j].join(',');
+    newMap[String(newData[j][0])] = newData[j].join(',');
   }
 
   Object.keys(newMap).forEach(function(key) {
@@ -215,14 +230,14 @@ function detectDiff(oldData, newData, sheetName) {
 }
 
 /**
- * CSVテキストを2次元配列にパース（カンマ・ダブルクォート対応）
+ * CSVテキストを2次元配列にパース
  */
 function parseCsv(text) {
   return Utilities.parseCsv(text);
 }
 
 // ─────────────────────────────────────────
-// 整合性チェック（§4.2）
+// 整合性チェック（全マーケットシートを対象）
 // ─────────────────────────────────────────
 
 /**
@@ -238,13 +253,8 @@ function runIntegrityChecks(ss) {
     invalidFvf: []
   };
 
-  // チェック1: condition_id 存在確認
   result = checkConditionIdExists(ss, result);
-
-  // チェック2: ja_display 空欄チェック
   result = checkJaDisplayNotEmpty(ss, result);
-
-  // チェック3: FVFレート範囲チェック
   result = checkFvfRateRange(ss, result);
 
   result.passed = result.missingConditionIds.length === 0
@@ -256,18 +266,12 @@ function runIntegrityChecks(ss) {
 }
 
 /**
- * チェック1: category_master の conditions_json に含まれる condition_id が
+ * チェック1: 全マーケットシートの conditions_json に含まれる condition_id が
  *            condition_ja_map に全て登録されているか
  */
 function checkConditionIdExists(ss, result) {
-  var catSheet = ss.getSheetByName('category_master');
   var conSheet = ss.getSheetByName('condition_ja_map');
-  if (!catSheet || !conSheet) return result;
-
-  var catData = catSheet.getDataRange().getValues();
-  var catHeaders = catData[0];
-  var conditionsJsonIdx = catHeaders.indexOf('conditions_json');
-  if (conditionsJsonIdx === -1) return result;
+  if (!conSheet) return result;
 
   var conData = conSheet.getDataRange().getValues();
   var conHeaders = conData[0];
@@ -280,23 +284,33 @@ function checkConditionIdExists(ss, result) {
   }
 
   var missing = {};
-  for (var j = 1; j < catData.length; j++) {
-    var json = catData[j][conditionsJsonIdx];
-    if (!json) continue;
-    try {
-      var conditions = JSON.parse(json);
-      conditions.forEach(function(c) {
-        var id = String(c.id || c.condition_id);
-        if (!registeredIds[id] && !missing[id]) {
-          missing[id] = true;
-          result.missingConditionIds.push(id);
-          appendSyncLog('condition_ja_map', 'check_fail', 'condition_id=' + id + ' が未登録', 'error');
-        }
-      });
-    } catch (e) {
-      Logger.log('conditions_json パースエラー: ' + e.toString());
+  CATEGORY_MARKETPLACES.forEach(function(mp) {
+    var catSheet = ss.getSheetByName('category_master_' + mp);
+    if (!catSheet) return;
+
+    var catData = catSheet.getDataRange().getValues();
+    var catHeaders = catData[0];
+    var conditionsJsonIdx = catHeaders.indexOf('conditions_json');
+    if (conditionsJsonIdx === -1) return;
+
+    for (var j = 1; j < catData.length; j++) {
+      var json = catData[j][conditionsJsonIdx];
+      if (!json || json === '[]') continue;
+      try {
+        var conditions = JSON.parse(json);
+        conditions.forEach(function(c) {
+          var id = String(c.id || c.condition_id);
+          if (!registeredIds[id] && !missing[id]) {
+            missing[id] = true;
+            result.missingConditionIds.push(id);
+            appendSyncLog('condition_ja_map', 'check_fail', 'condition_id=' + id + ' が未登録', 'error');
+          }
+        });
+      } catch (e) {
+        Logger.log('conditions_json パースエラー (' + mp + '): ' + e.toString());
+      }
     }
-  }
+  });
 
   return result;
 }
@@ -321,7 +335,8 @@ function checkJaDisplayNotEmpty(ss, result) {
         condition_id:   data[i][idIdx],
         condition_name: data[i][nameIdx]
       });
-      appendSyncLog('condition_ja_map', 'check_fail', 'ja_display空欄: condition_id=' + data[i][idIdx], 'error');
+      appendSyncLog('condition_ja_map', 'check_fail',
+        'ja_display空欄: condition_id=' + data[i][idIdx], 'error');
     }
   }
 
@@ -329,26 +344,29 @@ function checkJaDisplayNotEmpty(ss, result) {
 }
 
 /**
- * チェック3: category_master の fvf_rate 範囲チェック（0〜20%）
+ * チェック3: 全マーケットシートの fvf_rate 範囲チェック（0〜20%）
  */
 function checkFvfRateRange(ss, result) {
-  var sheet = ss.getSheetByName('category_master');
-  if (!sheet) return result;
+  CATEGORY_MARKETPLACES.forEach(function(mp) {
+    var sheet = ss.getSheetByName('category_master_' + mp);
+    if (!sheet) return;
 
-  var data = sheet.getDataRange().getValues();
-  var headers = data[0];
-  var fvfIdx = headers.indexOf('fvf_rate');
-  var catIdx = headers.indexOf('category_id');
-  if (fvfIdx === -1) return result;
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+    var fvfIdx = headers.indexOf('fvf_rate');
+    var catIdx = headers.indexOf('category_id');
+    if (fvfIdx === -1) return;
 
-  for (var i = 1; i < data.length; i++) {
-    var rate = parseFloat(data[i][fvfIdx]);
-    if (isNaN(rate)) continue;
-    if (rate < 0 || rate > 20) {
-      result.invalidFvf.push({ category_id: data[i][catIdx], fvf_rate: rate });
-      appendSyncLog('category_master', 'check_fail', 'fvf_rate範囲外: category_id=' + data[i][catIdx] + ' rate=' + rate, 'error');
+    for (var i = 1; i < data.length; i++) {
+      var rate = parseFloat(data[i][fvfIdx]);
+      if (isNaN(rate)) continue;
+      if (rate < 0 || rate > 20) {
+        result.invalidFvf.push({ marketplace: mp, category_id: data[i][catIdx], fvf_rate: rate });
+        appendSyncLog('category_master_' + mp, 'check_fail',
+          'fvf_rate範囲外: category_id=' + data[i][catIdx] + ' rate=' + rate, 'error');
+      }
     }
-  }
+  });
 
   return result;
 }
@@ -358,8 +376,7 @@ function checkFvfRateRange(ss, result) {
 // ─────────────────────────────────────────
 
 /**
- * 原本ブックの category_master と condition_ja_map を
- * サービス提供用ブックへ転記（sync_log・config は転記しない）
+ * 全マーケットシートと condition_ja_map をサービス提供用ブックへ転記
  * @param {Spreadsheet} ss
  * @param {Object} config
  */
@@ -369,7 +386,10 @@ function transferToServiceBook(ss, config) {
 
   var serviceBook = SpreadsheetApp.openById(serviceBookId);
 
-  var targets = ['category_master', 'condition_ja_map'];
+  var targets = CATEGORY_MARKETPLACES.map(function(mp) {
+    return 'category_master_' + mp;
+  }).concat(['condition_ja_map']);
+
   targets.forEach(function(name) {
     var srcSheet = ss.getSheetByName(name);
     if (!srcSheet) {
@@ -387,7 +407,6 @@ function transferToServiceBook(ss, config) {
     dstSheet.clearContents();
     dstSheet.getRange(1, 1, data.length, data[0].length).setValues(data);
 
-    // ヘッダースタイル
     var headerRange = dstSheet.getRange(1, 1, 1, data[0].length);
     headerRange.setBackground('#4285f4');
     headerRange.setFontColor('#ffffff');
@@ -405,7 +424,6 @@ function transferToServiceBook(ss, config) {
 
 /**
  * 手動実行用: セットアップ（初回のみ）
- * clasp run setupAll で実行
  */
 function setupAll() {
   setupProperties();
