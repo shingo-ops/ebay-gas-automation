@@ -89,13 +89,15 @@ def cmd_fetch(marketplace_id: str):
 
     processed = 0
     errors = 0
+    attempts = 0  # 成否にかかわらず試行回数をカウント
 
     for row in rows:
-        if processed >= SAMPLE_PER_MARKET:
-            break  # サンプル上限に達したら早期終了
+        if attempts >= SAMPLE_PER_MARKET:
+            break  # 試行回数上限に達したら早期終了
 
         tree_id = row["category_tree_id"]
         cat_id = row["category_id"]
+        attempts += 1
 
         try:
             conditions = fetch_conditions_for_category(token, tree_id, cat_id)
