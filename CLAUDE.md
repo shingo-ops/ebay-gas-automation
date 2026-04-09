@@ -54,6 +54,9 @@ Pythonスクリプトを管理するリポジトリ。
 ## 仕様書・ドキュメントの場所
 - 出品ツール仕様書: docs/listing/
 - リサーチツール仕様書: docs/research/
+- **eBay DBシステム設計定義書: ebay-db/docs/ebay_db_design_report.md**
+  - ebay-db配下の実装を進める際は必ずこのファイルを参照すること
+  - カテゴリマスター・コンディションマスターのスキーマ定義、GASの関数仕様、GitHub Actionsワークフロー、データフローが記載されている
 
 ## @claudeへの指示の出し方
 - IssueまたはPRのコメントで @claude と書いて指示する
