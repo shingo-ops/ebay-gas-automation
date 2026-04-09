@@ -1,14 +1,14 @@
 condition_id,condition_name,condition_enum,ja_display,ja_description,last_synced
-1000,Brand New,,,,2026-04-09
-1500,Opened – never used,,,,2026-04-09
-2500,Seller refurbished,,,,2026-04-09
-3000,Used,,,,2026-04-09
-7000,For parts or not working,,,,2026-04-09
-1750,New with defects,,,,2026-04-09
-2750,Like new,,,,2026-04-09
-4000,Very good,,,,2026-04-09
-5000,Good,,,,2026-04-09
-6000,Acceptable,,,,2026-04-09
-2990,Pre-owned - Excellent,,,,2026-04-09
-3010,Pre-owned - Fair,,,,2026-04-09
+1000,Brand New,NEW,,,2026-04-09
+1500,Opened – never used,NEW_OTHER,,,2026-04-09
+2500,Seller refurbished,SELLER_REFURBISHED,,,2026-04-09
+3000,Used,USED_EXCELLENT,,,2026-04-09
+7000,For parts or not working,FOR_PARTS_OR_NOT_WORKING,,,2026-04-09
+1750,New with defects,NEW_WITH_DEFECTS,,,2026-04-09
+2750,Like new,LIKE_NEW,,,2026-04-09
+4000,Very good,USED_VERY_GOOD,,,2026-04-09
+5000,Good,USED_GOOD,,,2026-04-09
+6000,Acceptable,USED_ACCEPTABLE,,,2026-04-09
+2990,Pre-owned - Excellent,PRE_OWNED_EXCELLENT,,,2026-04-09
+3010,Pre-owned - Fair,PRE_OWNED_FAIR,,,2026-04-09
 1900,Unbenutzt,,,,2026-04-09
