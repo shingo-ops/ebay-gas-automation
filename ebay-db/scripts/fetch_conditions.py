@@ -1,15 +1,19 @@
 """
 fetch_conditions.py
-eBay Taxonomy API の getItemConditionPolicies で全カテゴリのコンディションを取得
+eBay Sell Metadata API の getItemConditionPolicies で全カテゴリのコンディションを取得
 
 Usage:
   fetch <MARKETPLACE_ID>  -- 1マーケットの category_raw_EBAY_XX.json を更新
   combine                 -- 全マーケットファイルを category_raw.json に結合
 
-戦略:
-  - 全カテゴリを対象に BATCH_SIZE 件ずつ並列で API 取得
-  - ThreadPoolExecutor(max_workers=BATCH_SIZE) で各バッチを並列処理
-  - 1バッチのうち最も遅いレスポンスが終わってから次バッチを開始
+エンドポイント:
+  GET /sell/metadata/v1/marketplace/{marketplace_id}/get_item_condition_policies
+  → マーケットの全カテゴリのコンディションポリシーを paginate して一括取得
+  → category_id をキーにしてマッピング後、category_raw に適用する
+  → Application token（client_credentials）で利用可能
+
+注: commerce/taxonomy/v1 の get_item_condition_policies は fetchItemAspects の
+    category_id と互換性がないため使用しない。
 """
 
 import os
@@ -17,11 +21,10 @@ import json
 import glob
 import argparse
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-TAXONOMY_API = "https://api.ebay.com/commerce/taxonomy/v1"
-BATCH_SIZE = int(os.environ.get("CONDITIONS_BATCH_SIZE", "50"))
-API_TIMEOUT_SECS = int(os.environ.get("CONDITIONS_API_TIMEOUT", "10"))
+SELL_METADATA_API = "https://api.ebay.com/sell/metadata/v1"
+PAGE_LIMIT = int(os.environ.get("CONDITIONS_PAGE_LIMIT", "100"))   # max 100
+API_TIMEOUT_SECS = int(os.environ.get("CONDITIONS_API_TIMEOUT", "30"))
 
 
 def get_access_token() -> str:
@@ -42,51 +45,63 @@ def get_access_token() -> str:
     return resp.json()["access_token"]
 
 
-def fetch_conditions_for_category(token: str, category_tree_id: str, category_id: str) -> list[dict]:
-    """指定カテゴリのコンディションポリシーを取得"""
-    url = (
-        f"{TAXONOMY_API}/category_tree/{category_tree_id}"
-        f"/get_item_condition_policies?category_id={category_id}"
-    )
+def fetch_all_condition_policies(token: str, marketplace_id: str) -> dict:
+    """マーケットの全カテゴリのコンディションポリシーを一括取得。
+
+    Returns:
+        dict: {category_id (str): [{"id", "name", "enum", "category_display"}, ...]}
+    """
+    url = f"{SELL_METADATA_API}/marketplace/{marketplace_id}/get_item_condition_policies"
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/json",
     }
 
-    resp = requests.get(url, headers=headers, timeout=API_TIMEOUT_SECS)
-    if resp.status_code == 204:
-        return []
-    resp.raise_for_status()
+    cat_conditions: dict[str, list[dict]] = {}
+    offset = 0
 
-    data = resp.json()
-    conditions = []
-    for policy in data.get("itemConditionPolicies", []):
-        for cond in policy.get("itemConditions", []):
-            conditions.append({
-                "id": cond.get("conditionId", ""),
-                "name": cond.get("conditionDescription", ""),
-                "enum": cond.get("conditionEnum", ""),
-                "category_display": cond.get("conditionDescription", ""),
-            })
-    return conditions
+    while True:
+        resp = requests.get(
+            url,
+            headers=headers,
+            params={"limit": PAGE_LIMIT, "offset": offset},
+            timeout=API_TIMEOUT_SECS,
+        )
+        if resp.status_code == 204:
+            break
+        resp.raise_for_status()
 
+        data = resp.json()
+        policies = data.get("itemConditionPolicies", [])
 
-def _fetch_one(args: tuple) -> tuple:
-    """ThreadPoolExecutor 用ワーカー: (token, tree_id, cat_id, row_idx) → (row_idx, conditions, error)"""
-    token, tree_id, cat_id, row_idx = args
-    try:
-        conditions = fetch_conditions_for_category(token, tree_id, cat_id)
-        return row_idx, conditions, None
-    except Exception as e:
-        return row_idx, [], str(e)
+        for policy in policies:
+            cat_id = str(policy.get("categoryId", ""))
+            conditions = []
+            for cond in policy.get("itemConditions", []):
+                conditions.append({
+                    "id":               cond.get("conditionId", ""),
+                    "name":             cond.get("conditionDescription", ""),
+                    "enum":             cond.get("conditionEnum", ""),
+                    "category_display": cond.get("conditionDescription", ""),
+                })
+            cat_conditions[cat_id] = conditions
+
+        total = data.get("total", 0)
+        offset += len(policies)
+        print(f"    ページ取得: {offset}/{total} カテゴリ")
+
+        if offset >= total or not policies:
+            break
+
+    return cat_conditions
 
 
 def cmd_fetch(marketplace_id: str):
-    """1マーケットの全カテゴリのコンディションを BATCH_SIZE 件並列で取得して上書き保存"""
+    """1マーケットのコンディションポリシーを一括取得して category_raw を更新"""
     out_dir = os.environ.get("OUTPUT_DIR", ".")
     input_path = f"{out_dir}/category_raw_{marketplace_id}.json"
 
-    print(f"=== fetch_conditions.py [{marketplace_id}] 開始 (batch_size={BATCH_SIZE}) ===")
+    print(f"=== fetch_conditions.py [{marketplace_id}] 開始 ===")
 
     with open(input_path, encoding="utf-8") as f:
         rows = json.load(f)
@@ -96,39 +111,24 @@ def cmd_fetch(marketplace_id: str):
         return
 
     token = get_access_token()
-    total = len(rows)
-    processed = 0
-    errors = 0
-    report_interval = BATCH_SIZE * 10  # 500件ごとに進捗報告
 
-    for batch_start in range(0, total, BATCH_SIZE):
-        batch_end = min(batch_start + BATCH_SIZE, total)
-        tasks = [
-            (token, rows[i]["category_tree_id"], rows[i]["category_id"], i)
-            for i in range(batch_start, batch_end)
-        ]
+    print(f"  sell/metadata/v1 からポリシーを一括取得中...")
+    cat_conditions = fetch_all_condition_policies(token, marketplace_id)
+    print(f"  {len(cat_conditions)} カテゴリのポリシーを取得完了")
 
-        with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
-            futures = [executor.submit(_fetch_one, task) for task in tasks]
-            for future in as_completed(futures):
-                row_idx, conditions, err = future.result()
-                rows[row_idx]["conditions_json"] = json.dumps(conditions, ensure_ascii=False)
-                if err:
-                    errors += 1
-                    if errors <= 5:
-                        print(f"  ⚠️ row_idx={row_idx}: {err}")
-                else:
-                    processed += 1
-
-        # 一定間隔で進捗報告
-        if batch_end % report_interval == 0 or batch_end == total:
-            pct = batch_end * 100 // total
-            print(f"  進捗: {batch_end}/{total} ({pct}%) processed={processed} errors={errors}")
+    matched = 0
+    for row in rows:
+        cat_id = str(row.get("category_id", ""))
+        if cat_id in cat_conditions:
+            row["conditions_json"] = json.dumps(cat_conditions[cat_id], ensure_ascii=False)
+            matched += 1
+        else:
+            row["conditions_json"] = "[]"
 
     with open(input_path, "w", encoding="utf-8") as f:
         json.dump(rows, f, ensure_ascii=False)
 
-    print(f"=== 完了: {processed} 件取得, {errors} 件エラー → {input_path} ===")
+    print(f"=== 完了: {matched}/{len(rows)} 件マッチ → {input_path} ===")
 
 
 def cmd_combine():
