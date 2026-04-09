@@ -19,10 +19,14 @@ def load_json(path: str) -> any:
 
 
 def generate_category_master(rows: list[dict], fvf_rates: dict) -> None:
-    """category_master.csv を生成"""
+    """category_master.csv を生成
+
+    スペック列（required/recommended/optional_specs_json）は除外する。
+    218MBの巨大CSVになりGitHub 100MB制限・Google Sheets制限を超えるため。
+    スペックデータは category_raw.json から別途参照すること。
+    """
     fieldnames = [
         "marketplace_id", "category_tree_id", "category_id", "category_name",
-        "required_specs_json", "recommended_specs_json", "optional_specs_json",
         "conditions_json", "fvf_rate", "last_synced",
     ]
 
@@ -44,16 +48,13 @@ def generate_category_master(rows: list[dict], fvf_rates: dict) -> None:
                     break
 
             writer.writerow({
-                "marketplace_id":        mp,
-                "category_tree_id":      row.get("category_tree_id", ""),
-                "category_id":           row.get("category_id", ""),
-                "category_name":         cat_name,
-                "required_specs_json":   row.get("required_specs_json", "[]"),
-                "recommended_specs_json": row.get("recommended_specs_json", "[]"),
-                "optional_specs_json":   row.get("optional_specs_json", "[]"),
-                "conditions_json":       row.get("conditions_json", "[]"),
-                "fvf_rate":              fvf_rate,
-                "last_synced":           TODAY,
+                "marketplace_id":   mp,
+                "category_tree_id": row.get("category_tree_id", ""),
+                "category_id":      row.get("category_id", ""),
+                "category_name":    cat_name,
+                "conditions_json":  row.get("conditions_json", "[]"),
+                "fvf_rate":         fvf_rate,
+                "last_synced":      TODAY,
             })
 
     print(f"category_master.csv 生成: {len(rows)} 行 → {output_path}")
