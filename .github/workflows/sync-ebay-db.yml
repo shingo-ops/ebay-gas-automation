@@ -37,7 +37,8 @@ jobs:
           EBAY_CLIENT_ID:     ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
           OUTPUT_DIR:         ${{ env.OUTPUT_DIR }}
-        run: python ebay-db/scripts/fetch_category_master.py
+          PYTHONUNBUFFERED:   '1'
+        run: python -u ebay-db/scripts/fetch_category_master.py
 
       # ─── Step2: eBay コンディション取得 ───────────────────
       - name: Step2 - Fetch item condition policies
