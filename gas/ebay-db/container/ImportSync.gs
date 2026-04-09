@@ -21,6 +21,15 @@ function importAndSync() {
   }
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // category_master / condition_ja_map シートが存在しない場合は自動作成
+  ['category_master', 'condition_ja_map'].forEach(function(name) {
+    if (!ss.getSheetByName(name)) {
+      ss.insertSheet(name);
+      Logger.log(name + ' シートを新規作成しました');
+    }
+  });
+
   var diffResult = { categoryAdded: 0, categoryRemoved: 0, categoryChanged: 0, conditionAdded: 0, conditionRemoved: 0 };
 
   try {
