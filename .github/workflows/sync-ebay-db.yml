@@ -139,7 +139,10 @@ jobs:
           sed -i "s/REPLACED_BY_CI/${{ secrets.EBAY_DB_CB_DEV }}/" .clasp.json
 
       # ─── Step7: GAS importAndSync 実行 ────────────────────
+      # GAS の6分実行制限でタイムアウトする場合があるが、CSV コミット(Step6)が
+      # 完了していれば手動で GAS を実行しても同じ結果が得られるため non-fatal とする
       - name: Step7 - Run GAS importAndSync (import / validate / transfer)
+        continue-on-error: true
         working-directory: gas/ebay-db/container
         run: clasp run importAndSync
 
