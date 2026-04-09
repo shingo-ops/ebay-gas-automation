@@ -2,18 +2,22 @@
 fetch_conditions.py
 eBay Taxonomy API の getItemConditionPolicies で各カテゴリのコンディションを取得
 
+Usage:
+  fetch <MARKETPLACE_ID>  -- 1マーケットの category_raw_EBAY_XX.json を更新
+  combine                 -- 全マーケットファイルを category_raw.json に結合
+
 戦略:
-  - マーケットごとに最初の SAMPLE_PER_MARKET カテゴリのみ API 取得（デフォルト100）
+  - マーケットごとに最初の SAMPLE_PER_MARKET カテゴリのみ API 取得（デフォルト20）
   - eBay のコンディション ID は市場内で繰り返されるため、サンプルで全種類を網羅できる
   - サンプル外のカテゴリは conditions_json を空のまま（integrity check はスキップされる）
-  - condition_ja_map のユニーク ID 収集には十分
 """
 
 import os
 import json
+import glob
 import time
+import argparse
 import requests
-from collections import defaultdict
 
 TAXONOMY_API = "https://api.ebay.com/commerce/taxonomy/v1"
 SAMPLE_PER_MARKET = int(os.environ.get("CONDITIONS_SAMPLE_PER_MARKET", "20"))
@@ -38,7 +42,7 @@ def get_access_token() -> str:
     return resp.json()["access_token"]
 
 
-def fetch_conditions(token: str, category_tree_id: str, category_id: str) -> list[dict]:
+def fetch_conditions_for_category(token: str, category_tree_id: str, category_id: str) -> list[dict]:
     """指定カテゴリのコンディションポリシーを取得"""
     url = (
         f"{TAXONOMY_API}/category_tree/{category_tree_id}"
@@ -67,60 +71,93 @@ def fetch_conditions(token: str, category_tree_id: str, category_id: str) -> lis
     return conditions
 
 
-def main():
-    print(f"=== fetch_conditions.py 開始 (サンプル上限: {SAMPLE_PER_MARKET}/マーケット) ===")
+def cmd_fetch(marketplace_id: str):
+    """1マーケットの category_raw_EBAY_XX.json にコンディションを補完して上書き保存"""
+    out_dir = os.environ.get("OUTPUT_DIR", ".")
+    input_path = f"{out_dir}/category_raw_{marketplace_id}.json"
 
-    input_path = os.environ.get("OUTPUT_DIR", ".") + "/category_raw.json"
+    print(f"=== fetch_conditions.py [{marketplace_id}] 開始 (サンプル上限: {SAMPLE_PER_MARKET}) ===")
+
     with open(input_path, encoding="utf-8") as f:
         rows = json.load(f)
 
+    if not rows:
+        print(f"  {marketplace_id}: データなし。スキップ")
+        return
+
     token = get_access_token()
 
-    # マーケットプレイスごとのサンプル数カウント
-    market_counts: dict[str, int] = defaultdict(int)
     processed = 0
-    skipped = 0
     errors = 0
 
     for row in rows:
+        if processed >= SAMPLE_PER_MARKET:
+            break  # サンプル上限に達したら早期終了
+
         tree_id = row["category_tree_id"]
         cat_id = row["category_id"]
-        mp_id = row["marketplace_id"]
-
-        # 既取得済みはスキップ
-        if row.get("conditions_json") and row["conditions_json"] != "[]":
-            continue
-
-        # マーケットごとのサンプル上限チェック
-        if market_counts[mp_id] >= SAMPLE_PER_MARKET:
-            skipped += 1
-            continue
 
         try:
-            conditions = fetch_conditions(token, tree_id, cat_id)
+            conditions = fetch_conditions_for_category(token, tree_id, cat_id)
             row["conditions_json"] = json.dumps(conditions, ensure_ascii=False)
-            market_counts[mp_id] += 1
             processed += 1
         except Exception as e:
             errors += 1
             row["conditions_json"] = "[]"
-            if errors <= 10:
+            if errors <= 5:
                 print(f"  ⚠️ cat_id={cat_id}: {e}")
 
-        # レート制限対策
         time.sleep(0.1)
 
-        if processed % 50 == 0 and processed > 0:
-            counts_str = ", ".join(f"{k}={v}" for k, v in market_counts.items())
-            print(f"  進捗: {processed} 件取得 ({counts_str})")
+    # 上書き保存（indent なし → ファイルサイズ削減）
+    with open(input_path, "w", encoding="utf-8") as f:
+        json.dump(rows, f, ensure_ascii=False)
 
-    output_path = os.environ.get("OUTPUT_DIR", ".") + "/category_raw.json"
+    print(f"=== 完了: {processed} 件取得, {errors} 件エラー → {input_path} ===")
+
+
+def cmd_combine():
+    """全マーケットの category_raw_EBAY_*.json を結合して category_raw.json に出力"""
+    out_dir = os.environ.get("OUTPUT_DIR", ".")
+    pattern = f"{out_dir}/category_raw_EBAY_*.json"
+    files = sorted(glob.glob(pattern))
+
+    if not files:
+        print(f"❌ エラー: {pattern} にファイルが見つかりません")
+        raise SystemExit(1)
+
+    all_rows = []
+    for path in files:
+        with open(path, encoding="utf-8") as f:
+            rows = json.load(f)
+        print(f"  {os.path.basename(path)}: {len(rows)} 行")
+        all_rows.extend(rows)
+
+    output_path = f"{out_dir}/category_raw.json"
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(rows, f, ensure_ascii=False, indent=2)
+        json.dump(all_rows, f, ensure_ascii=False)
 
-    print(f"=== 完了: {processed} 件取得, {skipped} 件スキップ(上限超), {errors} 件エラー ===")
-    for mp, count in market_counts.items():
-        print(f"  {mp}: {count} カテゴリ取得")
+    print(f"=== combine 完了: 合計 {len(all_rows)} 行 → {output_path} ===")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command")
+
+    fetch_parser = subparsers.add_parser("fetch", help="1マーケットのコンディションを補完")
+    fetch_parser.add_argument("marketplace_id", help="例: EBAY_US")
+
+    subparsers.add_parser("combine", help="全マーケットファイルを結合")
+
+    args = parser.parse_args()
+
+    if args.command == "fetch":
+        cmd_fetch(args.marketplace_id)
+    elif args.command == "combine":
+        cmd_combine()
+    else:
+        parser.print_help()
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
