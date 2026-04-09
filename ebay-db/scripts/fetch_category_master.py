@@ -149,7 +149,7 @@ def cmd_fetch(marketplace_id: str):
     out_dir = os.environ.get("OUTPUT_DIR", ".")
     output_path = f"{out_dir}/category_raw_{marketplace_id}.json"
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(rows, f, ensure_ascii=False, indent=2)
+        json.dump(rows, f, ensure_ascii=False)
 
     print(f"=== 完了: {len(rows)} 行 → {output_path} ===")
 
@@ -173,7 +173,7 @@ def cmd_combine():
 
     output_path = f"{out_dir}/category_raw.json"
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(all_rows, f, ensure_ascii=False, indent=2)
+        json.dump(all_rows, f, ensure_ascii=False)
 
     print(f"=== combine 完了: 合計 {len(all_rows)} 行 → {output_path} ===")
 
@@ -213,7 +213,7 @@ def main():
 
         output_path = os.environ.get("OUTPUT_DIR", ".") + "/category_raw.json"
         with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(all_rows, f, ensure_ascii=False, indent=2)
+            json.dump(all_rows, f, ensure_ascii=False)
 
         print(f"=== 完了: {len(all_rows)} 行 → {output_path} ===")
 

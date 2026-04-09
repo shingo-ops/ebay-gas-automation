@@ -63,29 +63,53 @@ jobs:
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
         run: python -u ebay-db/scripts/fetch_category_master.py fetch EBAY_JP
 
-      - name: Step1f - Combine all marketplace data
-        if: always()
-        run: python -u ebay-db/scripts/fetch_category_master.py combine
-
-      # ─── Step2: eBay コンディション取得 ───────────────────
-      - name: Step2 - Fetch item condition policies
+      # ─── Step2: eBay コンディション取得（マーケット別）────
+      - name: Step2a - Fetch conditions EBAY_US
         env:
           EBAY_CLIENT_ID:     ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-        run: python -u ebay-db/scripts/fetch_conditions.py
+        run: python -u ebay-db/scripts/fetch_conditions.py fetch EBAY_US
 
-      # ─── Step3: FVFレート抽出（Gemini） ───────────────────
-      - name: Step3 - Extract FVF rates via Gemini
+      - name: Step2b - Fetch conditions EBAY_GB
+        env:
+          EBAY_CLIENT_ID:     ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+        run: python -u ebay-db/scripts/fetch_conditions.py fetch EBAY_GB
+
+      - name: Step2c - Fetch conditions EBAY_DE
+        env:
+          EBAY_CLIENT_ID:     ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+        run: python -u ebay-db/scripts/fetch_conditions.py fetch EBAY_DE
+
+      - name: Step2d - Fetch conditions EBAY_AU
+        env:
+          EBAY_CLIENT_ID:     ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+        run: python -u ebay-db/scripts/fetch_conditions.py fetch EBAY_AU
+
+      - name: Step2e - Fetch conditions EBAY_JP
+        env:
+          EBAY_CLIENT_ID:     ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+        run: python -u ebay-db/scripts/fetch_conditions.py fetch EBAY_JP
+
+      # ─── Step3: 全マーケットデータを結合 ──────────────────
+      - name: Step3 - Combine all marketplace data
+        run: python -u ebay-db/scripts/fetch_conditions.py combine
+
+      # ─── Step4: FVFレート抽出（Gemini） ───────────────────
+      - name: Step4 - Extract FVF rates via Gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python -u ebay-db/scripts/extract_fvf.py
 
-      # ─── Step4: CSV 生成 ───────────────────────────────────
-      - name: Step4 - Generate CSV files
+      # ─── Step5: CSV 生成 ───────────────────────────────────
+      - name: Step5 - Generate CSV files
         run: python -u ebay-db/scripts/generate_csv.py
 
-      # ─── Step5: CSV をリポジトリにコミット ────────────────
-      - name: Step5 - Commit CSVs to repository
+      # ─── Step6: CSV をリポジトリにコミット ────────────────
+      - name: Step6 - Commit CSVs to repository
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -114,8 +138,8 @@ jobs:
           cd gas/ebay-db/container
           sed -i "s/REPLACED_BY_CI/${{ secrets.EBAY_DB_CB_DEV }}/" .clasp.json
 
-      # ─── Step6: GAS importAndSync 実行 ────────────────────
-      - name: Step6 - Run GAS importAndSync (import / validate / transfer)
+      # ─── Step7: GAS importAndSync 実行 ────────────────────
+      - name: Step7 - Run GAS importAndSync (import / validate / transfer)
         working-directory: gas/ebay-db/container
         run: clasp run importAndSync
 
