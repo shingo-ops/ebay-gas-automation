@@ -23,7 +23,6 @@ function setupProperties() {
   var props = PropertiesService.getScriptProperties();
   var defaults = {
     'SERVICE_BOOK_ID':     '',
-    'DRIVE_CSV_FOLDER_ID': '',
     'DISCORD_WEBHOOK_EBAYDB': '',
     'GEMINI_API_KEY':      '',
     'AUTO_SYNC_ENABLED':   'TRUE',
@@ -37,7 +36,7 @@ function setupProperties() {
   });
 
   Logger.log('setupProperties 完了');
-  Logger.log('必須入力: SERVICE_BOOK_ID, DRIVE_CSV_FOLDER_ID, DISCORD_WEBHOOK_EBAYDB, GEMINI_API_KEY');
+  Logger.log('必須入力: SERVICE_BOOK_ID, DISCORD_WEBHOOK_EBAYDB, GEMINI_API_KEY');
 }
 
 /**

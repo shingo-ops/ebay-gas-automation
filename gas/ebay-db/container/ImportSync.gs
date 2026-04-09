@@ -26,7 +26,7 @@ function importAndSync() {
   try {
     // Step4: CSVインポート・差分検出
     Logger.log('[Step4] CSVインポート開始');
-    diffResult = importCsvAndDetectDiff(ss, config);
+    diffResult = importCsvAndDetectDiff(ss);
     Logger.log('[Step4] 完了: ' + JSON.stringify(diffResult));
 
     // Step5: ja_display 空欄行を Gemini で自動補完
@@ -72,71 +72,63 @@ function importAndSync() {
 // CSV インポート・差分検出
 // ─────────────────────────────────────────
 
+var GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/shingo-ops/bay-auto/main/ebay-db/output/';
+
 /**
- * Google Drive からCSVを読み込みシートに書き込む
+ * GitHub リポジトリから CSV を取得してシートに書き込む
  * 差分を検出して sync_log に記録
  * @param {Spreadsheet} ss
- * @param {Object} config
  * @returns {Object} diffResult
  */
-function importCsvAndDetectDiff(ss, config) {
-  var folderId = config['DRIVE_CSV_FOLDER_ID'];
-  if (!folderId) throw new Error('DRIVE_CSV_FOLDER_ID がスクリプトプロパティに設定されていません');
-
-  var folder = DriveApp.getFolderById(folderId);
+function importCsvAndDetectDiff(ss) {
   var diffResult = { categoryAdded: 0, categoryRemoved: 0, categoryChanged: 0, conditionAdded: 0, conditionRemoved: 0 };
 
   // category_master.csv のインポート
-  var catFile = getLatestFileByName(folder, 'category_master.csv');
-  if (catFile) {
-    var catDiff = importCsvToSheet(ss, catFile, 'category_master');
+  try {
+    var catText = fetchCsvFromGitHub('category_master.csv');
+    var catDiff = importCsvToSheet(ss, catText, 'category_master');
     diffResult.categoryAdded   = catDiff.added;
     diffResult.categoryRemoved = catDiff.removed;
     diffResult.categoryChanged = catDiff.changed;
-  } else {
-    Logger.log('⚠️ category_master.csv が見つかりません');
+  } catch (e) {
+    Logger.log('⚠️ category_master.csv 取得失敗: ' + e.toString());
   }
 
   // condition_ja_map.csv のインポート
-  var conFile = getLatestFileByName(folder, 'condition_ja_map.csv');
-  if (conFile) {
-    var conDiff = importCsvToSheet(ss, conFile, 'condition_ja_map');
+  try {
+    var conText = fetchCsvFromGitHub('condition_ja_map.csv');
+    var conDiff = importCsvToSheet(ss, conText, 'condition_ja_map');
     diffResult.conditionAdded   = conDiff.added;
     diffResult.conditionRemoved = conDiff.removed;
-  } else {
-    Logger.log('⚠️ condition_ja_map.csv が見つかりません');
+  } catch (e) {
+    Logger.log('⚠️ condition_ja_map.csv 取得失敗: ' + e.toString());
   }
 
   return diffResult;
 }
 
 /**
- * フォルダ内から指定名のファイルを取得（更新日時が最新のもの）
- * @param {Folder} folder
- * @param {string} name
- * @returns {File|null}
+ * GitHub raw URL から CSV テキストを取得
+ * @param {string} filename
+ * @returns {string} CSV テキスト
  */
-function getLatestFileByName(folder, name) {
-  var files = folder.getFilesByName(name);
-  var latest = null;
-  while (files.hasNext()) {
-    var f = files.next();
-    if (!latest || f.getLastUpdated() > latest.getLastUpdated()) {
-      latest = f;
-    }
+function fetchCsvFromGitHub(filename) {
+  var url = GITHUB_RAW_BASE + filename;
+  var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  if (response.getResponseCode() !== 200) {
+    throw new Error('HTTP ' + response.getResponseCode() + ': ' + url);
   }
-  return latest;
+  return response.getContentText();
 }
 
 /**
- * CSVファイルをシートにインポートし差分を返す
+ * CSV テキストをシートにインポートし差分を返す
  * @param {Spreadsheet} ss
- * @param {File} file
+ * @param {string} csvText
  * @param {string} sheetName
  * @returns {Object} { added, removed, changed }
  */
-function importCsvToSheet(ss, file, sheetName) {
-  var csvText = file.getBlob().getDataAsString('UTF-8');
+function importCsvToSheet(ss, csvText, sheetName) {
   var newData = parseCsv(csvText);
 
   if (newData.length < 2) {
