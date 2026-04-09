@@ -12,6 +12,27 @@ from datetime import datetime, timezone
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", ".")
 TODAY = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+# condition_enum ハードコードマッピング
+# sell/metadata/v1 getItemConditionPolicies は conditionEnum を返さないため静的定義
+CONDITION_ENUM_MAP: dict[str, str] = {
+    "1000": "NEW",
+    "1500": "NEW_OTHER",
+    "1750": "NEW_WITH_DEFECTS",
+    "2000": "CERTIFIED_REFURBISHED",
+    "2010": "EXCELLENT_REFURBISHED",
+    "2020": "VERY_GOOD_REFURBISHED",
+    "2030": "GOOD_REFURBISHED",
+    "2500": "SELLER_REFURBISHED",
+    "2750": "LIKE_NEW",
+    "2990": "PRE_OWNED_EXCELLENT",
+    "3000": "USED_EXCELLENT",
+    "3010": "PRE_OWNED_FAIR",
+    "4000": "USED_VERY_GOOD",
+    "5000": "USED_GOOD",
+    "6000": "USED_ACCEPTABLE",
+    "7000": "FOR_PARTS_OR_NOT_WORKING",
+}
+
 
 def load_json(path: str) -> any:
     with open(path, encoding="utf-8") as f:
@@ -97,7 +118,7 @@ def generate_condition_ja_map(rows: list[dict]) -> None:
             seen[cid] = {
                 "condition_id":   cid,
                 "condition_name": c.get("name", ""),
-                "condition_enum": c.get("enum", ""),
+                "condition_enum": CONDITION_ENUM_MAP.get(cid, c.get("enum", "")),
                 "ja_display":     "",   # GeminiTranslate.gs で補完
                 "ja_description": "",
                 "last_synced":    TODAY,
