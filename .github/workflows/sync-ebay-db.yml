@@ -64,6 +64,7 @@ jobs:
         run: python -u ebay-db/scripts/fetch_category_master.py fetch EBAY_JP
 
       - name: Step1f - Combine all marketplace data
+        if: always()
         run: python -u ebay-db/scripts/fetch_category_master.py combine
 
       # ─── Step2: eBay コンディション取得 ───────────────────

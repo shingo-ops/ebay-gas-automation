@@ -135,9 +135,16 @@ def cmd_fetch(marketplace_id: str):
     token = get_access_token()
 
     print(f"取得中: {target['marketplace_id']} (tree_id={target['category_tree_id']})")
-    aspects = fetch_aspects_for_marketplace(token, target["category_tree_id"])
-    rows = build_category_rows(aspects, target["marketplace_id"], target["category_tree_id"])
-    print(f"  → {len(rows)} カテゴリ取得")
+    try:
+        aspects = fetch_aspects_for_marketplace(token, target["category_tree_id"])
+        rows = build_category_rows(aspects, target["marketplace_id"], target["category_tree_id"])
+        print(f"  → {len(rows)} カテゴリ取得")
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 404:
+            print(f"  ⚠️ {marketplace_id} は fetchItemAspects 非対応 (404)。スキップします")
+            rows = []
+        else:
+            raise
 
     out_dir = os.environ.get("OUTPUT_DIR", ".")
     output_path = f"{out_dir}/category_raw_{marketplace_id}.json"
@@ -145,10 +152,6 @@ def cmd_fetch(marketplace_id: str):
         json.dump(rows, f, ensure_ascii=False, indent=2)
 
     print(f"=== 完了: {len(rows)} 行 → {output_path} ===")
-
-    if len(rows) == 0:
-        print(f"❌ エラー: データが0件です")
-        raise SystemExit(1)
 
 
 def cmd_combine():
