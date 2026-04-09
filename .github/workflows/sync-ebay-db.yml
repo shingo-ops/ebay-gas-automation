@@ -58,13 +58,18 @@ jobs:
           OUTPUT_DIR: ${{ env.OUTPUT_DIR }}
         run: python ebay-db/scripts/generate_csv.py
 
-      # ─── Step5: Google Drive へアップロード ────────────────
-      - name: Step5 - Upload CSVs to Google Drive
-        env:
-          GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
-          DRIVE_CSV_FOLDER_ID:     ${{ secrets.DRIVE_CSV_FOLDER_ID }}
-          OUTPUT_DIR:              ${{ env.OUTPUT_DIR }}
-        run: python ebay-db/scripts/upload_to_drive.py
+      # ─── Step5: CSV をリポジトリにコミット ────────────────
+      - name: Step5 - Commit CSVs to repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ebay-db/output/category_master.csv ebay-db/output/condition_ja_map.csv
+          if git diff --staged --quiet; then
+            echo "CSVに変更なし。コミットをスキップ"
+          else
+            git commit -m "data: ebay-db CSV 月次更新 $(date -u '+%Y-%m-%d')"
+            git push
+          fi
 
       # ─── clasp セットアップ ────────────────────────────────
       - name: Setup Node.js for clasp
