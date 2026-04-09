@@ -13,13 +13,7 @@
 function importAndSync() {
   Logger.log('=== ebay-db 月次同期 開始 ===');
 
-  var config;
-  try {
-    config = getConfig();
-  } catch (e) {
-    notifyError('config シート読み込み失敗: ' + e.toString());
-    throw e;
-  }
+  var config = getConfig();
 
   if (config['AUTO_SYNC_ENABLED'] === 'FALSE') {
     Logger.log('AUTO_SYNC_ENABLED=FALSE のためスキップ');
@@ -54,7 +48,7 @@ function importAndSync() {
 
       // LAST_FULL_SYNC を更新
       var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
-      updateConfig(ss, 'LAST_FULL_SYNC', now);
+      PropertiesService.getScriptProperties().setProperty('LAST_FULL_SYNC', now);
       Logger.log('[Step7] 転記完了');
     } else {
       Logger.log('[Step7] 整合性チェック FAIL → 転記スキップ');
@@ -87,7 +81,7 @@ function importAndSync() {
  */
 function importCsvAndDetectDiff(ss, config) {
   var folderId = config['DRIVE_CSV_FOLDER_ID'];
-  if (!folderId) throw new Error('DRIVE_CSV_FOLDER_ID が config に設定されていません');
+  if (!folderId) throw new Error('DRIVE_CSV_FOLDER_ID がスクリプトプロパティに設定されていません');
 
   var folder = DriveApp.getFolderById(folderId);
   var diffResult = { categoryAdded: 0, categoryRemoved: 0, categoryChanged: 0, conditionAdded: 0, conditionRemoved: 0 };
@@ -370,7 +364,7 @@ function checkFvfRateRange(ss, result) {
  */
 function transferToServiceBook(ss, config) {
   var serviceBookId = config['SERVICE_BOOK_ID'];
-  if (!serviceBookId) throw new Error('SERVICE_BOOK_ID が config に設定されていません');
+  if (!serviceBookId) throw new Error('SERVICE_BOOK_ID がスクリプトプロパティに設定されていません');
 
   var serviceBook = SpreadsheetApp.openById(serviceBookId);
 
@@ -409,29 +403,11 @@ function transferToServiceBook(ss, config) {
 // ─────────────────────────────────────────
 
 /**
- * configシートの特定キーの値を更新
- * @param {Spreadsheet} ss
- * @param {string} key
- * @param {string} value
- */
-function updateConfig(ss, key, value) {
-  var sheet = ss.getSheetByName('config');
-  if (!sheet) return;
-
-  var data = sheet.getDataRange().getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (data[i][0] === key) {
-      sheet.getRange(i + 1, 2).setValue(value);
-      return;
-    }
-  }
-}
-
-/**
  * 手動実行用: セットアップ（初回のみ）
+ * clasp run setupAll で実行
  */
 function setupAll() {
-  setupConfigSheet();
+  setupProperties();
   setupSyncLogSheet();
-  Logger.log('セットアップ完了。configシートにSERVICE_BOOK_IDとDRIVE_CSV_FOLDER_IDを入力してください。');
+  Logger.log('セットアップ完了。GASエディタ > プロジェクトの設定 > スクリプトプロパティ で各値を入力してください。');
 }

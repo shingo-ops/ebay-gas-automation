@@ -1,62 +1,43 @@
 /**
- * Config.gs - configシートからの設定値読み込み
+ * Config.gs - PropertiesService による設定値管理
  * ebay-db 原本ブック専用
+ *
+ * configシートは廃止。設定は GAS スクリプトプロパティで管理。
+ * GASエディタ > プロジェクトの設定 > スクリプトプロパティ で値を入力してください。
  */
 
 /**
- * configシートから全設定値を取得
- * @returns {Object} キー: 列A、値: 列B の設定オブジェクト
+ * スクリプトプロパティから全設定値を取得
+ * @returns {Object} キー・値のオブジェクト
  */
 function getConfig() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('config');
-  if (!sheet) {
-    throw new Error('config シートが見つかりません。セットアップを実行してください。');
-  }
-
-  var data = sheet.getDataRange().getValues();
-  var config = {};
-  for (var i = 0; i < data.length; i++) {
-    var key = data[i][0];
-    var val = data[i][1];
-    if (key) {
-      config[String(key)] = val;
-    }
-  }
-  return config;
+  return PropertiesService.getScriptProperties().getProperties();
 }
 
 /**
- * configシートの初期セットアップ（初回のみ実行）
+ * スクリプトプロパティの一括初期設定（初回のみ実行）
+ * 未設定のキーにデフォルト値をセット。既存値は上書きしない。
+ * 実行後、GASエディタ > プロジェクトの設定 > スクリプトプロパティ で各値を入力してください。
  */
-function setupConfigSheet() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('config');
+function setupProperties() {
+  var props = PropertiesService.getScriptProperties();
+  var defaults = {
+    'SERVICE_BOOK_ID':     '',
+    'DRIVE_CSV_FOLDER_ID': '',
+    'DISCORD_WEBHOOK':     '',
+    'GEMINI_API_KEY':      '',
+    'AUTO_SYNC_ENABLED':   'TRUE',
+    'LAST_FULL_SYNC':      ''
+  };
 
-  if (!sheet) {
-    sheet = ss.insertSheet('config');
-    Logger.log('config シートを作成しました');
-  }
+  Object.keys(defaults).forEach(function(key) {
+    if (props.getProperty(key) === null) {
+      props.setProperty(key, defaults[key]);
+    }
+  });
 
-  var rows = [
-    ['SERVICE_BOOK_ID',     '',      'サービス提供用ブックのスプレッドシートID'],
-    ['DRIVE_CSV_FOLDER_ID', '',      'Python出力CSVの格納先Google DriveフォルダID'],
-    ['DISCORD_WEBHOOK',     '',      'Discord通知用Webhook URL'],
-    ['AUTO_SYNC_ENABLED',   'TRUE',  '自動転記の有効化（TRUE/FALSE）'],
-    ['LAST_FULL_SYNC',      '',      '最終フル同期日時（自動更新）']
-  ];
-
-  sheet.clearContents();
-  sheet.getRange(1, 1, rows.length, 3).setValues(rows);
-
-  // ヘッダースタイル
-  sheet.getRange(1, 1, rows.length, 1).setFontWeight('bold');
-  sheet.setColumnWidth(1, 200);
-  sheet.setColumnWidth(2, 400);
-  sheet.setColumnWidth(3, 350);
-  sheet.setFrozenRows(0);
-
-  Logger.log('config シートのセットアップ完了');
+  Logger.log('setupProperties 完了');
+  Logger.log('必須入力: SERVICE_BOOK_ID, DRIVE_CSV_FOLDER_ID, DISCORD_WEBHOOK, GEMINI_API_KEY');
 }
 
 /**
@@ -91,8 +72,8 @@ function setupSyncLogSheet() {
 
 /**
  * sync_log に1行追記
- * @param {string} type - 'category_master' | 'condition_ja_map'
- * @param {string} action - 'added' | 'removed' | 'changed' | 'check_fail' | 'transferred'
+ * @param {string} type - 'category_master' | 'condition_ja_map' | 'system'
+ * @param {string} action - 'added' | 'removed' | 'changed' | 'check_fail' | 'transferred' | 'error'
  * @param {string} detail - 詳細メッセージ
  * @param {string} status - 'pending' | 'synced' | 'error'
  */
