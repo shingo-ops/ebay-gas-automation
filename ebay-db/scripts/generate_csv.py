@@ -19,45 +19,54 @@ def load_json(path: str) -> any:
 
 
 def generate_category_master(rows: list[dict], fvf_rates: dict) -> None:
-    """category_master.csv を生成
+    """マーケットプレイスごとに category_master_EBAY_XX.csv を生成
 
     スペック列（required/recommended/optional_specs_json）は除外する。
-    218MBの巨大CSVになりGitHub 100MB制限・Google Sheets制限を超えるため。
-    スペックデータは category_raw.json から別途参照すること。
+    218MBになりGitHub 100MB制限・Google Sheets制限を超えるため。
     """
     fieldnames = [
         "marketplace_id", "category_tree_id", "category_id", "category_name",
         "conditions_json", "fvf_rate", "last_synced",
     ]
 
-    output_path = f"{OUTPUT_DIR}/category_master.csv"
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
+    # マーケットプレイスごとに分類
+    by_market: dict[str, list[dict]] = {}
+    for row in rows:
+        mp = row.get("marketplace_id", "UNKNOWN")
+        by_market.setdefault(mp, []).append(row)
 
-        for row in rows:
-            mp = row.get("marketplace_id", "")
-            cat_name = row.get("category_name", "")
+    total = 0
+    for mp, mp_rows in sorted(by_market.items()):
+        output_path = f"{OUTPUT_DIR}/category_master_{mp}.csv"
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
 
-            # FVF レートをカテゴリ名で紐付け（部分一致）
             fvf_map = fvf_rates.get(mp, {})
-            fvf_rate = ""
-            for key, rate in fvf_map.items():
-                if key.lower() in cat_name.lower() or cat_name.lower() in key.lower():
-                    fvf_rate = rate
-                    break
+            for row in mp_rows:
+                cat_name = row.get("category_name", "")
 
-            writer.writerow({
-                "marketplace_id":   mp,
-                "category_tree_id": row.get("category_tree_id", ""),
-                "category_id":      row.get("category_id", ""),
-                "category_name":    cat_name,
-                "conditions_json":  row.get("conditions_json", "[]"),
-                "fvf_rate":         fvf_rate,
-                "last_synced":      TODAY,
-            })
+                # FVF レートをカテゴリ名で紐付け（部分一致）
+                fvf_rate = ""
+                for key, rate in fvf_map.items():
+                    if key.lower() in cat_name.lower() or cat_name.lower() in key.lower():
+                        fvf_rate = rate
+                        break
 
-    print(f"category_master.csv 生成: {len(rows)} 行 → {output_path}")
+                writer.writerow({
+                    "marketplace_id":   mp,
+                    "category_tree_id": row.get("category_tree_id", ""),
+                    "category_id":      row.get("category_id", ""),
+                    "category_name":    cat_name,
+                    "conditions_json":  row.get("conditions_json", "[]"),
+                    "fvf_rate":         fvf_rate,
+                    "last_synced":      TODAY,
+                })
+
+        print(f"  {output_path}: {len(mp_rows)} 行")
+        total += len(mp_rows)
+
+    print(f"category_master_EBAY_*.csv 生成完了: 合計 {total} 行")
 
 
 def generate_condition_ja_map(rows: list[dict]) -> None:
