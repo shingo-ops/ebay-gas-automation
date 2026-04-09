@@ -70,17 +70,21 @@ def generate_category_master(rows: list[dict], fvf_rates: dict) -> None:
 
 
 def generate_condition_ja_map(rows: list[dict]) -> None:
-    """condition_ja_map.csv を生成（重複なし・ユニーク condition_id + category_display）"""
+    """condition_ja_map.csv を生成（condition_id でユニーク化）
+
+    全カテゴリ網羅後は同一 condition_id が大量の category_id に紐付くため、
+    condition_id を主キーとして最初の出現を採用する。
+    """
     fieldnames = [
         "condition_id", "condition_name", "condition_enum",
-        "category_display", "category_ids", "ja_display", "ja_description", "last_synced",
+        "ja_display", "ja_description", "last_synced",
     ]
 
-    # condition_id + category_display の組み合わせでユニーク化
-    seen = {}
+    seen: dict[str, dict] = {}
     for row in rows:
         conditions_json = row.get("conditions_json", "[]")
-        category_id = row.get("category_id", "")
+        if not conditions_json or conditions_json == "[]":
+            continue
         try:
             conditions = json.loads(conditions_json)
         except Exception:
@@ -88,25 +92,16 @@ def generate_condition_ja_map(rows: list[dict]) -> None:
 
         for c in conditions:
             cid = str(c.get("id", ""))
-            cdisplay = c.get("category_display", c.get("name", ""))
-            key = f"{cid}|{cdisplay}"
-
-            if key not in seen:
-                seen[key] = {
-                    "condition_id":    cid,
-                    "condition_name":  c.get("name", ""),
-                    "condition_enum":  c.get("enum", ""),
-                    "category_display": cdisplay,
-                    "category_ids":    category_id,
-                    "ja_display":      "",   # GeminiTranslate.gs で補完
-                    "ja_description":  "",
-                    "last_synced":     TODAY,
-                }
-            else:
-                # 既出の condition だが別カテゴリでも使われる場合は category_ids に追記
-                existing_ids = seen[key]["category_ids"]
-                if category_id and category_id not in existing_ids.split(","):
-                    seen[key]["category_ids"] = existing_ids + "," + category_id
+            if not cid or cid in seen:
+                continue
+            seen[cid] = {
+                "condition_id":   cid,
+                "condition_name": c.get("name", ""),
+                "condition_enum": c.get("enum", ""),
+                "ja_display":     "",   # GeminiTranslate.gs で補完
+                "ja_description": "",
+                "last_synced":    TODAY,
+            }
 
     output_path = f"{OUTPUT_DIR}/condition_ja_map.csv"
     with open(output_path, "w", newline="", encoding="utf-8") as f:

@@ -1,27 +1,27 @@
 """
 fetch_conditions.py
-eBay Taxonomy API の getItemConditionPolicies で各カテゴリのコンディションを取得
+eBay Taxonomy API の getItemConditionPolicies で全カテゴリのコンディションを取得
 
 Usage:
   fetch <MARKETPLACE_ID>  -- 1マーケットの category_raw_EBAY_XX.json を更新
   combine                 -- 全マーケットファイルを category_raw.json に結合
 
 戦略:
-  - マーケットごとに最初の SAMPLE_PER_MARKET カテゴリのみ API 取得（デフォルト20）
-  - eBay のコンディション ID は市場内で繰り返されるため、サンプルで全種類を網羅できる
-  - サンプル外のカテゴリは conditions_json を空のまま（integrity check はスキップされる）
+  - 全カテゴリを対象に BATCH_SIZE 件ずつ並列で API 取得
+  - ThreadPoolExecutor(max_workers=BATCH_SIZE) で各バッチを並列処理
+  - 1バッチのうち最も遅いレスポンスが終わってから次バッチを開始
 """
 
 import os
 import json
 import glob
-import time
 import argparse
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 TAXONOMY_API = "https://api.ebay.com/commerce/taxonomy/v1"
-SAMPLE_PER_MARKET = int(os.environ.get("CONDITIONS_SAMPLE_PER_MARKET", "20"))
-API_TIMEOUT_SECS = int(os.environ.get("CONDITIONS_API_TIMEOUT", "5"))
+BATCH_SIZE = int(os.environ.get("CONDITIONS_BATCH_SIZE", "50"))
+API_TIMEOUT_SECS = int(os.environ.get("CONDITIONS_API_TIMEOUT", "10"))
 
 
 def get_access_token() -> str:
@@ -71,12 +71,22 @@ def fetch_conditions_for_category(token: str, category_tree_id: str, category_id
     return conditions
 
 
+def _fetch_one(args: tuple) -> tuple:
+    """ThreadPoolExecutor 用ワーカー: (token, tree_id, cat_id, row_idx) → (row_idx, conditions, error)"""
+    token, tree_id, cat_id, row_idx = args
+    try:
+        conditions = fetch_conditions_for_category(token, tree_id, cat_id)
+        return row_idx, conditions, None
+    except Exception as e:
+        return row_idx, [], str(e)
+
+
 def cmd_fetch(marketplace_id: str):
-    """1マーケットの category_raw_EBAY_XX.json にコンディションを補完して上書き保存"""
+    """1マーケットの全カテゴリのコンディションを BATCH_SIZE 件並列で取得して上書き保存"""
     out_dir = os.environ.get("OUTPUT_DIR", ".")
     input_path = f"{out_dir}/category_raw_{marketplace_id}.json"
 
-    print(f"=== fetch_conditions.py [{marketplace_id}] 開始 (サンプル上限: {SAMPLE_PER_MARKET}) ===")
+    print(f"=== fetch_conditions.py [{marketplace_id}] 開始 (batch_size={BATCH_SIZE}) ===")
 
     with open(input_path, encoding="utf-8") as f:
         rows = json.load(f)
@@ -86,32 +96,35 @@ def cmd_fetch(marketplace_id: str):
         return
 
     token = get_access_token()
-
+    total = len(rows)
     processed = 0
     errors = 0
-    attempts = 0  # 成否にかかわらず試行回数をカウント
+    report_interval = BATCH_SIZE * 10  # 500件ごとに進捗報告
 
-    for row in rows:
-        if attempts >= SAMPLE_PER_MARKET:
-            break  # 試行回数上限に達したら早期終了
+    for batch_start in range(0, total, BATCH_SIZE):
+        batch_end = min(batch_start + BATCH_SIZE, total)
+        tasks = [
+            (token, rows[i]["category_tree_id"], rows[i]["category_id"], i)
+            for i in range(batch_start, batch_end)
+        ]
 
-        tree_id = row["category_tree_id"]
-        cat_id = row["category_id"]
-        attempts += 1
+        with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+            futures = [executor.submit(_fetch_one, task) for task in tasks]
+            for future in as_completed(futures):
+                row_idx, conditions, err = future.result()
+                rows[row_idx]["conditions_json"] = json.dumps(conditions, ensure_ascii=False)
+                if err:
+                    errors += 1
+                    if errors <= 5:
+                        print(f"  ⚠️ row_idx={row_idx}: {err}")
+                else:
+                    processed += 1
 
-        try:
-            conditions = fetch_conditions_for_category(token, tree_id, cat_id)
-            row["conditions_json"] = json.dumps(conditions, ensure_ascii=False)
-            processed += 1
-        except Exception as e:
-            errors += 1
-            row["conditions_json"] = "[]"
-            if errors <= 5:
-                print(f"  ⚠️ cat_id={cat_id}: {e}")
+        # 一定間隔で進捗報告
+        if batch_end % report_interval == 0 or batch_end == total:
+            pct = batch_end * 100 // total
+            print(f"  進捗: {batch_end}/{total} ({pct}%) processed={processed} errors={errors}")
 
-        time.sleep(0.1)
-
-    # 上書き保存（indent なし → ファイルサイズ削減）
     with open(input_path, "w", encoding="utf-8") as f:
         json.dump(rows, f, ensure_ascii=False)
 
