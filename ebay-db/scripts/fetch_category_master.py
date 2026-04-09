@@ -49,7 +49,6 @@ def fetch_aspects_for_marketplace(token: str, category_tree_id: str) -> list[dic
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/json",
-        "Accept-Encoding": "gzip",
     }
 
     for attempt in range(MAX_RETRIES):
@@ -63,11 +62,15 @@ def fetch_aspects_for_marketplace(token: str, category_tree_id: str) -> list[dic
 
         resp.raise_for_status()
 
-        # gzip 対応（requests が自動展開しない場合に備えて手動展開）
-        if resp.headers.get("Content-Encoding") == "gzip":
-            data = json.loads(gzip.decompress(resp.content))
-        else:
-            data = resp.json()
+        raw = resp.content
+        if not raw:
+            raise ValueError(f"レスポンスが空です (tree_id={category_tree_id})")
+
+        # gzip 圧縮の有無を try/except で判定（Content-Encoding ヘッダー不依存）
+        try:
+            data = json.loads(gzip.decompress(raw))
+        except Exception:
+            data = json.loads(raw)
 
         return data.get("categoryAspects", [])
 
