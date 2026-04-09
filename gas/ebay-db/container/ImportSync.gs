@@ -250,18 +250,72 @@ function runIntegrityChecks(ss) {
     passed: true,
     missingConditionIds: [],
     emptyJaDisplay: [],
-    invalidFvf: []
+    invalidFvf: [],
+    emptyDataMarkets: [],
+    emptyConditionsMarkets: []
   };
 
+  result = checkDataNotEmpty(ss, result);
+  result = checkConditionsJsonNotEmpty(ss, result);
   result = checkConditionIdExists(ss, result);
   result = checkJaDisplayNotEmpty(ss, result);
   result = checkFvfRateRange(ss, result);
 
-  result.passed = result.missingConditionIds.length === 0
+  result.passed = result.emptyDataMarkets.length === 0
+               && result.emptyConditionsMarkets.length === 0
+               && result.missingConditionIds.length === 0
                && result.emptyJaDisplay.length === 0
                && result.invalidFvf.length === 0;
 
   Logger.log('整合性チェック結果: ' + JSON.stringify(result));
+  return result;
+}
+
+/**
+ * チェック0a: 全マーケットシートのデータ行が0件でないか
+ */
+function checkDataNotEmpty(ss, result) {
+  CATEGORY_MARKETPLACES.forEach(function(mp) {
+    var sheet = ss.getSheetByName('category_master_' + mp);
+    if (!sheet) return;
+    var rowCount = sheet.getLastRow() - 1; // ヘッダー除く
+    if (rowCount <= 0) {
+      result.emptyDataMarkets.push(mp);
+      appendSyncLog('category_master_' + mp, 'check_fail', 'データ行が0件', 'error');
+    }
+  });
+  return result;
+}
+
+/**
+ * チェック0b: 全マーケットシートの conditions_json が全て [] でないか
+ * 全行の90%以上が [] の場合は取得失敗とみなす
+ */
+function checkConditionsJsonNotEmpty(ss, result) {
+  CATEGORY_MARKETPLACES.forEach(function(mp) {
+    var sheet = ss.getSheetByName('category_master_' + mp);
+    if (!sheet) return;
+
+    var data = sheet.getDataRange().getValues();
+    if (data.length < 2) return;
+
+    var headers = data[0];
+    var condIdx = headers.indexOf('conditions_json');
+    if (condIdx === -1) return;
+
+    var total = data.length - 1;
+    var emptyCount = 0;
+    for (var i = 1; i < data.length; i++) {
+      var val = data[i][condIdx];
+      if (!val || val === '[]') emptyCount++;
+    }
+
+    if (emptyCount / total >= 0.9) {
+      result.emptyConditionsMarkets.push(mp);
+      appendSyncLog('category_master_' + mp, 'check_fail',
+        'conditions_json が90%以上空: ' + emptyCount + '/' + total, 'error');
+    }
+  });
   return result;
 }
 

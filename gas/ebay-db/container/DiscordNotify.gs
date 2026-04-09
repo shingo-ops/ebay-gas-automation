@@ -65,6 +65,12 @@ function notifySyncResult(diffResult, checkResult, transferred) {
     lines.push('✅ 全チェック PASS → サービス提供用ブックへ転記しました');
   } else {
     lines.push('❌ チェック FAIL → 転記はブロックされました');
+    if (checkResult.emptyDataMarkets && checkResult.emptyDataMarkets.length > 0) {
+      lines.push('- データ空 (0件): ' + checkResult.emptyDataMarkets.join(', '));
+    }
+    if (checkResult.emptyConditionsMarkets && checkResult.emptyConditionsMarkets.length > 0) {
+      lines.push('- conditions_json 90%以上空 (API取得失敗の可能性): ' + checkResult.emptyConditionsMarkets.join(', '));
+    }
     if (checkResult.missingConditionIds && checkResult.missingConditionIds.length > 0) {
       lines.push('- condition_ja_map 未登録 condition_id: ' + checkResult.missingConditionIds.join(', '));
     }
