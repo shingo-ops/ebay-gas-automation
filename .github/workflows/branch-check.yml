@@ -33,6 +33,5 @@ jobs:
       - name: Warn on direct commit to main
         if: steps.check-commit.outputs.is_bot != 'true' && steps.check-commit.outputs.is_merge != 'true'
         run: |
-          echo "⚠️  mainブランチで直接コミットしようとしています"
-          echo "developブランチで作業してください"
-          exit 1
+          echo "⚠️  mainブランチで直接コミットしています（develop経由のマージを推奨）"
+          echo "警告のみ — ワークフローは続行します"

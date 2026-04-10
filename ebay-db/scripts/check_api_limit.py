@@ -9,7 +9,7 @@ HTTP ステータスコード（200 vs 429）だけを確認する。
 
 Usage:
   python ebay-db/scripts/check_api_limit.py
-  EBAY_CLIENT_ID=xxx EBAY_CLIENT_SECRET=xxx python ...
+  EBAY_CLIENT_ID=<CLIENT_ID> EBAY_CLIENT_SECRET=<CLIENT_SECRET> python ...
 """
 
 import os

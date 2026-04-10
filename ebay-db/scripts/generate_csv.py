@@ -42,29 +42,30 @@ CONDITION_ENUM_MAP: dict[int, str] = {
 
 # ja_display デフォルト値（eBay標準コンディション向け）
 JA_DISPLAY_DEFAULT: dict[int, str] = {
-    1000: "新品、未使用",
+    1000: "新品/未使用",
     1500: "未使用に近い",
-    1750: "新品、未使用（難あり）",
+    1750: "新品/未使用（訳あり）",
     1900: "未使用",
     2000: "メーカー整備済み",
     2010: "整備済み - 非常に良い",
     2020: "整備済み - 良い",
     2030: "整備済み - やや傷あり",
-    2500: "セラー整備済み",
-    2750: "未使用に近い",
+    2500: "整備済み",
+    2750: "ほぼ新品",
     2990: "目立った傷や汚れなし",
-    3000: "やや傷や汚れあり",
+    3000: "目立った傷や汚れなし",
     3010: "傷や汚れあり",
-    4000: "目立った傷や汚れなし",
-    5000: "やや傷や汚れあり",
+    4000: "やや傷や汚れあり",
+    5000: "傷や汚れあり",
     6000: "全体的に状態が悪い",
-    7000: "ジャンク品（部品取り用）",
+    7000: "ジャンク品",
 }
 
 # トレカ系グループ用の特別表記
 JA_DISPLAY_TRADING_CARD: dict[str, str] = {
-    "2750": "鑑定済み",
-    "4000": "未鑑定",
+    "2750": "鑑定済み（Graded）",
+    "3000": "中古",
+    "4000": "未鑑定（Ungraded）",
 }
 
 
@@ -86,20 +87,36 @@ def is_trading_card_group(ids: frozenset) -> bool:
     )
 
 
+def is_apparel_group(ids: frozenset) -> bool:
+    """アパレル系グループ判定
+
+    1750（New with defects）・2990（Pre-owned Excellent）・3010（Pre-owned Fair）を
+    すべて含むグループ → 衣類・ファッション系カテゴリ
+    """
+    return {"1750", "2990", "3010"}.issubset(ids)
+
+
 def build_ja_map_json(condition_items: list[dict], ids: frozenset) -> str:
     """グループの ja_map_json を生成
 
-    JA_DISPLAY_DEFAULT をベースに、トレカ系グループは
-    2750 → 鑑定済み / 4000 → 未鑑定 で上書き。
+    JA_DISPLAY_DEFAULT をベースに、グループ種別で上書き・曖昧さ回避を適用。
+
+    優先順:
+      1. TCG グループ: 2750→鑑定済み（Graded）, 3000→中古, 4000→未鑑定（Ungraded）
+      2. アパレルグループ: 1000→新品・タグ付き
+      3. デフォルト
+      4. 曖昧さ回避: 2990+3000 共存 → 3000に「（使用感あり）」付加
+                     3010+5000 共存 → 5000に「（使用感あり）」付加
 
     Args:
         condition_items: conditions_json のパース済みリスト
         ids: condition_id の frozenset
 
     Returns:
-        JSON文字列 {"1000": "新品、未使用", ...}
+        JSON文字列 {"1000": "新品/未使用", ...}
     """
     tcg = is_trading_card_group(ids)
+    apparel = is_apparel_group(ids)
     ja_map: dict[str, str] = {}
 
     for item in condition_items:
@@ -110,8 +127,18 @@ def build_ja_map_json(condition_items: list[dict], ids: frozenset) -> str:
 
         if tcg and cid in JA_DISPLAY_TRADING_CARD:
             ja_map[cid] = JA_DISPLAY_TRADING_CARD[cid]
+        elif apparel and cid == "1000":
+            ja_map[cid] = "新品・タグ付き"
         else:
             ja_map[cid] = JA_DISPLAY_DEFAULT.get(cid_int, "")
+
+    # 曖昧さ回避: 2990（Pre-owned Excellent）と3000（Used Excellent）が共存
+    if "2990" in ja_map and "3000" in ja_map:
+        ja_map["3000"] = "目立った傷や汚れなし（使用感あり）"
+
+    # 曖昧さ回避: 3010（Pre-owned Fair）と5000（Good）が共存
+    if "3010" in ja_map and "5000" in ja_map:
+        ja_map["5000"] = "傷や汚れあり（使用感あり）"
 
     return json.dumps(ja_map, ensure_ascii=False)
 
