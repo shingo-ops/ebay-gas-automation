@@ -470,25 +470,37 @@ function handleEdit(e) {
       return;
     }
 
-    // B8セル（Item URL）の編集のみ処理
-    if (editedRow === RESEARCH_ITEM_LIST.DATA_ROW && editedCol === RESEARCH_ITEM_LIST.COLUMNS.ITEM_URL.col) {
+    if (editedRow !== RESEARCH_ITEM_LIST.DATA_ROW) {
+      Logger.log('データ行以外なのでスキップ（行=' + editedRow + '）');
+      return;
+    }
+
+    // B8セル（Item URL）の編集 → カテゴリ情報を自動取得
+    if (editedCol === RESEARCH_ITEM_LIST.COLUMNS.ITEM_URL.col) {
       const url = range.getValue();
       Logger.log('✅ Item URLセル編集を検知: ' + url);
 
-      // URLが空の場合は処理しない
+      // URLが空の場合はカテゴリ情報と状態プルダウンをクリア
       if (!url || url.toString().trim() === '') {
-        Logger.log('URLが空なのでカテゴリ情報をクリア');
-        // カテゴリ情報もクリア
+        Logger.log('URLが空なのでカテゴリ情報・状態プルダウンをクリア');
         sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.CATEGORY_ID.col).setValue('');
         sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.CATEGORY_NAME.col).setValue('');
+        setConditionDropdown('', sheet);
         return;
       }
 
-      // カテゴリ情報を自動取得
+      // カテゴリ情報を自動取得（fetchCategoryFromUrl 内で状態プルダウンも生成）
       Logger.log('fetchCategoryFromUrl を呼び出します');
       fetchCategoryFromUrl(url.toString(), sheet);
+
+    // G8セル（カテゴリID）の手動編集 → 状態プルダウンを更新
+    } else if (editedCol === RESEARCH_ITEM_LIST.COLUMNS.CATEGORY_ID.col) {
+      const categoryId = range.getValue();
+      Logger.log('✅ カテゴリIDセル編集を検知: ' + categoryId);
+      setConditionDropdown(categoryId ? categoryId.toString() : '', sheet);
+
     } else {
-      Logger.log('Item URLセル以外なのでスキップ（行=' + editedRow + ', 列=' + editedCol + '）');
+      Logger.log('対象セル以外なのでスキップ（行=' + editedRow + ', 列=' + editedCol + '）');
     }
 
   } catch (error) {
@@ -525,10 +537,15 @@ function fetchCategoryFromUrl(url, sheet) {
     // H8セル（カテゴリ名）に書き込み
     sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.CATEGORY_NAME.col).setValue(categoryName);
 
+    Logger.log('✅ カテゴリ情報を自動設定しました');
+
+    // E8セル（状態）プルダウンを生成（onEdit はスクリプトによる setValue を検知しないため直接呼び出し）
+    if (categoryId) {
+      setConditionDropdown(categoryId.toString(), sheet);
+    }
+
     // 完了メッセージ
     SpreadsheetApp.getActiveSpreadsheet().toast('カテゴリ情報を取得しました', '✅ 完了', 2);
-
-    Logger.log('✅ カテゴリ情報を自動設定しました');
 
   } catch (error) {
     Logger.log('fetchCategoryFromUrlエラー: ' + error.toString());

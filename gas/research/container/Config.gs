@@ -14,7 +14,8 @@ const SHEET_NAMES = {
   CALCULATION: '利益計算',
   RESEARCH: 'リサーチ',
   LISTING: '出品', // 転記先シート名（出品シートスプレッドシート内の「出品」シート）
-  CATEGORY_MASTER: 'カテゴリマスタ' // カテゴリマスタシート
+  CATEGORY_MASTER: 'category_master_EBAY_US', // 13列統合スキーマ（旧: 'カテゴリマスタ'）
+  CONDITION_JA_MAP: 'condition_ja_map'         // コンディション日本語マスタ
 };
 
 // Item Specifics色定義
