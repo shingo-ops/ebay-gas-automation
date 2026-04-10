@@ -1,9 +1,11 @@
 """
 check_api_limit.py
-eBay API のレートリミット状況を軽量に確認するプリフライトスクリプト
+eBay API の fetchItemAspects レートリミット状況を確認するプリフライトスクリプト
 
-fetchItemAspects（重量・上限消費）は使わず、
-get_default_category_tree_id（超軽量）だけを叩いてトークン取得 + API疎通を確認する。
+stream=True + すぐ close することでレスポンスボディをダウンロードせずに
+HTTP ステータスコード（200 vs 429）だけを確認する。
+ボディを読まなくてもステータスコードはヘッダーで確定するため
+クォータ消費量は最小限にとどまる。
 
 Usage:
   python ebay-db/scripts/check_api_limit.py
@@ -15,7 +17,10 @@ import sys
 import requests
 
 TAXONOMY_API = "https://api.ebay.com/commerce/taxonomy/v1"
-CHECK_MARKETPLACES = ["EBAY_US", "EBAY_GB", "EBAY_DE", "EBAY_AU"]
+
+# fetchItemAspects を使う代表マーケット（1つだけ確認すれば十分）
+CHECK_TREE_ID = "0"   # EBAY_US
+CHECK_MARKET  = "EBAY_US"
 
 
 def get_access_token(client_id: str, client_secret: str) -> str:
@@ -33,21 +38,33 @@ def get_access_token(client_id: str, client_secret: str) -> str:
     return resp.json()["access_token"]
 
 
-def check_default_tree(token: str, marketplace_id: str) -> dict:
-    """get_default_category_tree_id: 非常に軽量な単発GETリクエスト"""
-    url = f"{TAXONOMY_API}/get_default_category_tree_id"
-    resp = requests.get(
-        url,
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-        params={"marketplace_id": marketplace_id},
-        timeout=15,
-    )
-    return {
-        "marketplace_id": marketplace_id,
-        "status_code": resp.status_code,
-        "ok": resp.status_code == 200,
-        "body": resp.json() if resp.status_code == 200 else resp.text[:200],
+def check_fetch_item_aspects(token: str, tree_id: str) -> dict:
+    """fetchItemAspects のステータスコードだけを確認する。
+
+    stream=True でボディをダウンロードせず、ステータスコード取得後すぐ close。
+    429 なら Retry-After ヘッダーも返す。
+    """
+    url = f"{TAXONOMY_API}/category_tree/{tree_id}/fetch_item_aspects"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
     }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15, stream=True)
+        status = resp.status_code
+        retry_after = resp.headers.get("Retry-After", "")
+        resp.close()   # ボディは読まない
+        return {
+            "status_code": status,
+            "ok": status == 200,
+            "rate_limited": status == 429,
+            "retry_after": retry_after,
+        }
+    except requests.exceptions.Timeout:
+        return {"status_code": None, "ok": False, "rate_limited": False, "retry_after": "", "error": "timeout"}
+    except Exception as e:
+        return {"status_code": None, "ok": False, "rate_limited": False, "retry_after": "", "error": str(e)}
 
 
 def main():
@@ -58,7 +75,7 @@ def main():
         print("❌ 環境変数 EBAY_CLIENT_ID / EBAY_CLIENT_SECRET が未設定")
         sys.exit(1)
 
-    print("=== eBay API 疎通チェック ===\n")
+    print("=== eBay API fetchItemAspects レートリミット確認 ===\n")
 
     # Step1: OAuth トークン取得
     print("[1] OAuth トークン取得...")
@@ -69,30 +86,29 @@ def main():
         print(f"    ❌ トークン取得失敗: {e}")
         sys.exit(1)
 
-    # Step2: 各マーケットで get_default_category_tree_id を確認
-    print("[2] マーケット別 API 疎通確認（fetchItemAspects は叩かない）")
-    all_ok = True
-    for mp in CHECK_MARKETPLACES:
-        result = check_default_tree(token, mp)
-        if result["ok"]:
-            tree_id = result["body"].get("categoryTreeId", "?")
-            version = result["body"].get("categoryTreeVersion", "?")
-            print(f"    ✅ {mp}: tree_id={tree_id}, version={version}")
-        else:
-            sc = result["status_code"]
-            body = result["body"]
-            if sc == 429:
-                print(f"    ❌ {mp}: 429 Too Many Requests → まだレートリミット中")
-            else:
-                print(f"    ❌ {mp}: HTTP {sc} → {body}")
-            all_ok = False
+    # Step2: fetchItemAspects のステータス確認（ボディは読まない）
+    print(f"[2] fetchItemAspects 確認 ({CHECK_MARKET} / tree_id={CHECK_TREE_ID})...")
+    result = check_fetch_item_aspects(token, CHECK_TREE_ID)
 
-    print()
-    if all_ok:
-        print("✅ 全マーケット疎通OK → sync-ebay-db.yml の手動実行が可能です")
+    if result.get("error"):
+        print(f"    ❌ 接続エラー: {result['error']}")
+        sys.exit(1)
+
+    sc = result["status_code"]
+    if result["ok"]:
+        print(f"    ✅ HTTP {sc} → レートリミット解除済み")
+        print("\n✅ フル同期を実行できます:")
         print("   gh workflow run sync-ebay-db.yml --repo shingo-ops/bay-auto")
+    elif result["rate_limited"]:
+        ra = result["retry_after"]
+        if ra:
+            print(f"    ⏳ HTTP 429 → まだリミット中（Retry-After: {ra}秒）")
+        else:
+            print(f"    ⏳ HTTP 429 → まだリミット中")
+        print("\n⏳ もう少し待ってから再実行してください")
+        sys.exit(1)
     else:
-        print("❌ 一部マーケットで問題あり → まだ待つ必要があります")
+        print(f"    ❌ HTTP {sc} → 予期しないエラー")
         sys.exit(1)
 
 
