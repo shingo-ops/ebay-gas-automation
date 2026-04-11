@@ -663,9 +663,12 @@ function fetchSpecFromUrl(url, sheet) {
       sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.CATEGORY_NAME.col).getValue() || ''
     );
 
+    Logger.log('[Spec] 照合: G8(既存)="' + existingCategoryId + '", 取得="' + newCategoryId + '", G8空=' + !existingCategoryId + ', 一致=' + (existingCategoryId === newCategoryId));
+
     if (!existingCategoryId || existingCategoryId === newCategoryId) {
       // 一致 or G8未入力 → キャッシュ保存済み、そのまま完了
-      Logger.log('[Spec] カテゴリ一致 → キャッシュ保存完了: ' + url);
+      const reason = !existingCategoryId ? 'G8未入力' : 'カテゴリ一致';
+      Logger.log('[Spec] ' + reason + ' → キャッシュ保存完了: ' + url);
       SpreadsheetApp.getActiveSpreadsheet().toast(
         'スペック情報をキャッシュに保存しました（カテゴリ: ' + newCategoryId + '）',
         '✅ 完了', 3
