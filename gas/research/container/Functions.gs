@@ -494,7 +494,7 @@ function onListingButtonPolicy1() {
   if (response === ui.Button.OK) {
     transferListingDataWithPolicy(RESEARCH_POLICY.POLICY_1_ROW, 'Expedited');
   } else {
-    ui.toast('出品をキャンセルしました', 'eBay 出品', 3);
+    SpreadsheetApp.getActiveSpreadsheet().toast('出品をキャンセルしました', 'eBay 出品', 3);
   }
 }
 
@@ -513,7 +513,7 @@ function onListingButtonPolicy2() {
   if (response === ui.Button.OK) {
     transferListingDataWithPolicy(RESEARCH_POLICY.POLICY_2_ROW, 'Economy');
   } else {
-    ui.toast('出品をキャンセルしました', 'eBay 出品', 3);
+    SpreadsheetApp.getActiveSpreadsheet().toast('出品をキャンセルしました', 'eBay 出品', 3);
   }
 }
 
@@ -532,7 +532,7 @@ function onListingButtonPolicy3() {
   if (response === ui.Button.OK) {
     transferListingDataWithPolicy(RESEARCH_POLICY.POLICY_3_ROW, '書状');
   } else {
-    ui.toast('出品をキャンセルしました', 'eBay 出品', 3);
+    SpreadsheetApp.getActiveSpreadsheet().toast('出品をキャンセルしました', 'eBay 出品', 3);
   }
 }
 

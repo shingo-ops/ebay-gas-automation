@@ -35,7 +35,7 @@ function resetResearchFields() {
 
     // Noが選択された場合は中止
     if (response !== ui.Button.YES) {
-      ui.toast('リセットをキャンセルしました', 'リセット', 3);
+      SpreadsheetApp.getActiveSpreadsheet().toast('リセットをキャンセルしました', 'リセット', 3);
       return;
     }
 
