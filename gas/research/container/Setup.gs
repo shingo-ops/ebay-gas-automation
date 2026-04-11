@@ -635,12 +635,25 @@ function fetchSpecFromUrl(url, sheet) {
   try {
     SpreadsheetApp.getActiveSpreadsheet().toast('スペック情報を取得中...', 'eBay API', 5);
 
-    // API 呼び出し（キャッシュミス時のみ）& _cache に自動保存
-    const productInfo = getProductInfoFromUrl(url);
+    // キャッシュをバイパスして eBay API から直接取得（常に最新データで照合・保存）
+    const itemId    = extractItemIdFromUrl(url);
+    const item      = getItemFromEbay(itemId);
+    const category  = extractCategoryInfo(item);
+    const specifics = extractItemSpecifics(item);
 
-    const newCategoryId   = String(productInfo.category.categoryId   || '');
-    const newCategoryName = String(productInfo.category.categoryName || '');
-    const newSpecifics    = productInfo.specifics || {};
+    // _cache を最新データで上書き保存
+    saveCacheEntry(url, {
+      item:      item,
+      category:  category,
+      specifics: specifics,
+      title:     item.title || '',
+      itemId:    itemId,
+      imageUrl:  item.image && item.image.imageUrl ? item.image.imageUrl : ''
+    });
+
+    const newCategoryId   = String(category.categoryId   || '');
+    const newCategoryName = String(category.categoryName || '');
+    const newSpecifics    = specifics || {};
 
     // G8（カテゴリID）の現行値と比較
     const existingCategoryId   = String(
