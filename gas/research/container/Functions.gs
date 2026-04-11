@@ -417,24 +417,10 @@ function prepareTransferDataWithMapping(itemInfo, specInfo, listingSheet, header
   setValueByHeader(LISTING_COLUMNS.DEPTH.header, mainInfo.depth);
   setValueByHeader(LISTING_COLUMNS.WIDTH.header, mainInfo.width);
   setValueByHeader(LISTING_COLUMNS.HEIGHT.header, mainInfo.height);
-  setValueByHeader(LISTING_COLUMNS.VOLUMETRIC_WEIGHT.header, mainInfo.volumetricWeight);
-
-  // 適用重量(g)を計算
-  // 発送業者が「日本郵便」の場合は実重量、それ以外は容積重量と実重量の大きい方
-  const shippingCarrier = policyData && policyData.shippingCarrier ? policyData.shippingCarrier : '';
-  let appliedWeight = '';
-  if (mainInfo.actualWeight !== '' && mainInfo.actualWeight !== null && mainInfo.actualWeight !== undefined) {
-    if (shippingCarrier === '日本郵便') {
-      appliedWeight = mainInfo.actualWeight;
-    } else {
-      const actualWeight = Number(mainInfo.actualWeight) || 0;
-      const volumetricWeight = Number(mainInfo.volumetricWeight) || 0;
-      appliedWeight = Math.max(actualWeight, volumetricWeight);
-    }
-  }
-  setValueByHeader(LISTING_COLUMNS.APPLIED_WEIGHT.header, appliedWeight);
+  // 容積重量(g)・適用重量(g) はシートの関数で自動計算するため出力しない
 
   // 発送・ポリシー情報（ポリシーデータから取得）
+  const shippingCarrier = policyData && policyData.shippingCarrier ? policyData.shippingCarrier : '';
   setValueByHeader(LISTING_COLUMNS.SHIPPING_CARRIER.header, shippingCarrier);
   setValueByHeader(LISTING_COLUMNS.SHIPPING_METHOD.header, policyData && policyData.shippingMethod ? policyData.shippingMethod : '');
 
