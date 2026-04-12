@@ -480,6 +480,23 @@ function mapConditionId(conditionStr) {
  * @param {string} str エスケープする文字列
  * @returns {string} エスケープ済み文字列
  */
+/**
+ * 郵便番号を取得
+ * 優先順: ツール設定シート → PropertiesService
+ *
+ * @param {Object} config getEbayConfig() の戻り値
+ * @returns {string}
+ */
+function _getPostalCode(config) {
+  if (config.postalCode && String(config.postalCode).trim() !== '') {
+    return String(config.postalCode).trim();
+  }
+  const saved = PropertiesService.getScriptProperties().getProperty('POSTAL_CODE');
+  if (saved) return saved;
+  Logger.log('⚠️ 郵便番号が設定されていません。ツール設定シートの「郵便番号」に値を入力してください。');
+  return '';
+}
+
 function escapeXml(str) {
   if (!str) return '';
   return String(str)
@@ -514,12 +531,13 @@ function addItemWithTradingApi(listingData, policyIds) {
     '<PrimaryCategory><CategoryID>' + listingData.categoryId + '</CategoryID></PrimaryCategory>' +
     '<StartPrice>' + listingData.price + '</StartPrice>' +
     '<ConditionID>' + mapConditionId(listingData.condition) + '</ConditionID>' +
-    '<Country>US</Country>' +
+    '<Country>JP</Country>' +
     '<Currency>USD</Currency>' +
     '<DispatchTimeMax>3</DispatchTimeMax>' +
     '<ListingDuration>GTC</ListingDuration>' +
     '<ListingType>FixedPriceItem</ListingType>' +
     '<Location>' + escapeXml(config.itemLocation) + '</Location>' +
+    '<PostalCode>' + escapeXml(_getPostalCode(config)) + '</PostalCode>' +
     '<PaymentMethods>PayPal</PaymentMethods>' +
     '<Quantity>' + parseInt(listingData.quantity) + '</Quantity>' +
     '<Site>US</Site>';
