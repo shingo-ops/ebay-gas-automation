@@ -1673,14 +1673,18 @@ function clearAndMoveListingRow(spreadsheetId, rowNumber) {
     if (rowNumber < 5) throw new Error('ヘッダー行（1-4行目）は処理できません');
 
     const lastCol = listingSheet.getLastColumn();
-    const rowRange = listingSheet.getRange(rowNumber, 1, 1, lastCol);
 
     // データをクリア（書式は維持）
-    rowRange.clearContent();
-    // データ入力規則（プルダウン）を全列クリア
-    rowRange.clearDataValidations();
+    listingSheet.getRange(rowNumber, 1, 1, lastCol).clearContent();
 
-    Logger.log('✅ データ・入力規則クリア完了: ' + rowNumber + '行目');
+    // 状態列のデータ入力規則（プルダウン）のみ消去
+    const headerMapping = buildHeaderMapping();
+    const conditionCol = headerMapping['状態'];
+    if (conditionCol) {
+      listingSheet.getRange(rowNumber, conditionCol).clearDataValidations();
+    }
+
+    Logger.log('✅ データクリア完了: ' + rowNumber + '行目');
 
   } catch (error) {
     Logger.log('⚠️ 行クリアエラー（出品は成功済み）: ' + error.toString());
