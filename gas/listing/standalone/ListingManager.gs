@@ -1985,3 +1985,4 @@ function testTransferToOutputDb() {
     Logger.log('❌ 転記失敗: ' + (transferred ? transferred.error : '不明'));
   }
 }
+
