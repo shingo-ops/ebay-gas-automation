@@ -448,7 +448,7 @@ function getProductInfoFromUrl(url) {
         fullPath:     cached.categoryName
       },
       specifics: cached.specifics,
-      title:     '',   // キャッシュには title を保存しないため空文字
+      title:     cached.title || '',
       itemId:    extractItemIdFromUrl(url),
       imageUrl:  ''
     };
