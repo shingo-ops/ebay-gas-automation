@@ -421,10 +421,31 @@ function validateListingData(data) {
  * @returns {Object} { shippingPolicyId, returnPolicyId, paymentPolicyId }
  */
 function convertPolicyNamesToIds(data, spreadsheetId) {
-  // PolicyManager.gsで定義されているgetPolicyIdByName()を使用
-  const shippingPolicyId = getPolicyIdByName(data.shippingPolicy, 'Fulfillment Policy');
-  const returnPolicyId = getPolicyIdByName(data.returnPolicy, 'Return Policy');
-  const paymentPolicyId = getPolicyIdByName(data.paymentPolicy, 'Payment Policy');
+  // ポリシーシートを1回だけ読み込んで3件を一括検索
+  const policySheet = getTargetSpreadsheet().getSheetByName(SHEET_NAMES.POLICY_SETTINGS);
+  if (!policySheet) {
+    throw new Error('"' + SHEET_NAMES.POLICY_SETTINGS + '"シートが見つかりません。先に「ポリシー取得」を実行してください。');
+  }
+  const columnMap   = getPolicySheetColumnMap(policySheet);
+  const policyData  = policySheet.getDataRange().getValues();
+  const typeCol     = columnMap.POLICY_TYPE - 1;
+  const nameCol     = columnMap.POLICY_NAME - 1;
+  const idCol       = columnMap.POLICY_ID   - 1;
+
+  function lookupPolicy(targetName, targetType) {
+    for (var i = 1; i < policyData.length; i++) {
+      if (policyData[i][typeCol] === targetType && policyData[i][nameCol] === targetName) {
+        Logger.log('ポリシーID検索: ' + targetName + ' → ' + policyData[i][idCol]);
+        return policyData[i][idCol];
+      }
+    }
+    Logger.log('⚠️ ポリシーが見つかりません: ' + targetType + ' - ' + targetName);
+    return null;
+  }
+
+  const shippingPolicyId = lookupPolicy(data.shippingPolicy, 'Fulfillment Policy');
+  const returnPolicyId   = lookupPolicy(data.returnPolicy,   'Return Policy');
+  const paymentPolicyId  = lookupPolicy(data.paymentPolicy,  'Payment Policy');
 
   if (!shippingPolicyId) {
     throw new Error('Shipping Policy "' + data.shippingPolicy + '" が見つかりません。先に「ポリシー取得（タイプ別）」を実行してください。');
@@ -492,6 +513,15 @@ function resolveConditionIdFromMaster(conditionStr, config, categoryId) {
     throw new Error('カテゴリIDが設定されていません。');
   }
 
+  // CacheService で結果をキャッシュ（TTL: 6時間）
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'condId_' + String(categoryId) + '_' + str;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    Logger.log('condition_id キャッシュヒット: "' + str + '" → ' + cached + ' (category=' + categoryId + ')');
+    return cached;
+  }
+
   const masterSs = SpreadsheetApp.openById(masterSpreadsheetId);
 
   // Step 1: category_master_EBAY_US から condition_group を取得
@@ -549,8 +579,10 @@ function resolveConditionIdFromMaster(conditionStr, config, categoryId) {
   // Step 3: ja_map_json を value→key で逆引き
   for (const id in jaMap) {
     if (String(jaMap[id]) === str) {
-      Logger.log('condition_id 解決: "' + str + '" → ' + id + ' (category=' + categoryId + ', group=' + conditionGroup + ')');
-      return String(id);
+      const resolvedId = String(id);
+      Logger.log('condition_id 解決: "' + str + '" → ' + resolvedId + ' (category=' + categoryId + ', group=' + conditionGroup + ')');
+      cache.put(cacheKey, resolvedId, 21600); // 6時間キャッシュ
+      return resolvedId;
     }
   }
 
@@ -1622,83 +1654,29 @@ function getTransferHeadersResult(spreadsheetId) {
 }
 
 /**
- * 出品シートからデータをクリアして行を最下部に移動
- *
- * データをクリアして、SKUが入力されている最後尾の下に移動させる
- * これにより数式・入力規則・非表示設定を維持したまま、
- * データ行が上に集まり、空白行が下に集まる
+ * 出品シートの指定行データをクリア（書式・数式・入力規則は維持）
  *
  * @param {string} spreadsheetId スプレッドシートID
  * @param {number} rowNumber クリアする行番号
  */
 function clearAndMoveListingRow(spreadsheetId, rowNumber) {
   try {
-    Logger.log('=== 出品シート行クリア・移動開始 ===');
+    Logger.log('=== 出品シート行クリア開始 ===');
 
-    if (spreadsheetId) {
-      CURRENT_SPREADSHEET_ID = spreadsheetId;
-    }
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
 
     const listingSheet = getTargetSpreadsheet(spreadsheetId).getSheetByName(SHEET_NAMES.LISTING);
+    if (!listingSheet) throw new Error('"出品"シートが見つかりません');
 
-    if (!listingSheet) {
-      throw new Error('"出品"シートが見つかりません');
-    }
-
-    // 5行目以降のみ処理可能（ヘッダー保護）
-    if (rowNumber < 5) {
-      throw new Error('ヘッダー行（1-4行目）は処理できません');
-    }
-
-    // ヘッダーマッピングを取得してSKU列を特定
-    const headerMapping = buildHeaderMapping();
-    const skuCol = headerMapping['SKU'];
-
-    if (!skuCol) {
-      throw new Error('SKU列が見つかりません');
-    }
+    if (rowNumber < 5) throw new Error('ヘッダー行（1-4行目）は処理できません');
 
     // データをクリア（数式・入力規則・書式は維持）
     const lastCol = listingSheet.getLastColumn();
     listingSheet.getRange(rowNumber, 1, 1, lastCol).clearContent();
-
     Logger.log('✅ データクリア完了: ' + rowNumber + '行目');
 
-    // SKUが入力されている最後尾の行を検索
-    const lastRow = listingSheet.getLastRow();
-    let lastDataRow = 4; // 最低でも4行目（ヘッダー直前）
-
-    for (let i = lastRow; i >= 5; i--) {
-      const skuValue = listingSheet.getRange(i, skuCol).getValue();
-      if (skuValue && String(skuValue).trim() !== '') {
-        lastDataRow = i;
-        break;
-      }
-    }
-
-    Logger.log('SKU最終データ行: ' + lastDataRow + '行目');
-
-    // クリアした行が最終データ行より上にある場合のみ移動
-    if (rowNumber <= lastDataRow) {
-      // 行を移動（最終データ行の直下に移動）
-      const targetRow = lastDataRow + 1;
-
-      Logger.log('行を移動: ' + rowNumber + '行目 → ' + targetRow + '行目');
-
-      // moveRowsを使用して行を移動
-      listingSheet.moveRows(
-        listingSheet.getRange(rowNumber + ':' + rowNumber),
-        targetRow
-      );
-
-      Logger.log('✅ 行移動完了');
-    } else {
-      Logger.log('✅ すでに最下部にあるため移動不要');
-    }
-
   } catch (error) {
-    // 行移動エラーは非致命的（出品自体は成功）→ ログのみ
-    Logger.log('⚠️ 行クリア・移動エラー（出品は成功済み）: ' + error.toString());
+    Logger.log('⚠️ 行クリアエラー（出品は成功済み）: ' + error.toString());
   } finally {
     CURRENT_SPREADSHEET_ID = null;
   }
