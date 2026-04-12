@@ -1126,92 +1126,114 @@ function transferToOutputDb(spreadsheetId, rowNumber, listingData, result) {
       Logger.log('✅ ヘッダー行をコピーしました');
     }
 
-    // 出品元シートから行データを取得
+    // 出品元シートのデータとヘッダーマッピングを取得
     const sourceSheet = getTargetSpreadsheet(spreadsheetId).getSheetByName(SHEET_NAMES.LISTING);
-    const lastCol = sourceSheet.getLastColumn();
-    const rowData = sourceSheet.getRange(rowNumber, 1, 1, lastCol).getValues()[0];
+    const srcLastCol = sourceSheet.getLastColumn();
+    const sourceValues = sourceSheet.getRange(rowNumber, 1, 1, srcLastCol).getValues()[0];
+    const sourceHeaderMapping = buildHeaderMapping(); // 出品シート: 列名 → 1-based index
 
-    // ヘッダーマッピングを取得
-    const headerMapping = buildHeaderMapping();
+    // 出品DBのヘッダー行（3行目）を取得
+    const outputHeaderRow = outputSheet.getRange(3, 1, 1, outputSheet.getLastColumn()).getValues()[0];
 
-    // Item IDを追加
-    const itemIdCol = headerMapping['Item ID'];
-    if (itemIdCol) {
-      rowData[itemIdCol - 1] = result.itemId;
+    // 出品DB列名 → 0-based index のマップ
+    const outputColMap = {};
+    outputHeaderRow.forEach(function(h, i) {
+      if (h) outputColMap[String(h).trim()] = i;
+    });
+
+    // 出品DBの列構造に合わせて書き込み配列を生成（列名ベースのマッピング）
+    const outputRow = new Array(outputHeaderRow.length).fill('');
+    outputHeaderRow.forEach(function(h, i) {
+      const colName = String(h || '').trim();
+      if (!colName) return;
+      const srcIdx = sourceHeaderMapping[colName];
+      if (srcIdx) {
+        outputRow[i] = sourceValues[srcIdx - 1];
+      }
+    });
+
+    // --- 出品後に確定する特殊フィールドを上書き設定 ---
+
+    // Item ID
+    if ('Item ID' in outputColMap) {
+      outputRow[outputColMap['Item ID']] = result.itemId;
       Logger.log('Item IDを設定: ' + result.itemId);
+    } else {
+      Logger.log('⚠️ 出品DBに "Item ID" 列が見つかりません');
     }
 
-    // 出品URLを生成して追加
+    // 出品URL
     const listingUrl = 'https://www.ebay.com/itm/' + result.itemId;
-    const listingUrlCol = headerMapping['出品URL'];
-    if (listingUrlCol) {
-      rowData[listingUrlCol - 1] = listingUrl;
+    if ('出品URL' in outputColMap) {
+      outputRow[outputColMap['出品URL']] = listingUrl;
       Logger.log('出品URLを設定: ' + listingUrl);
     } else {
-      Logger.log('⚠️ "出品URL"列が見つかりません');
+      Logger.log('⚠️ 出品DBに "出品URL" 列が見つかりません');
     }
 
-    // 出品ステータスを"出品中"に設定（列名ゆれに対応）
-    const statusCol = headerMapping['出品ステータス'] || headerMapping['ステータス'];
-    if (statusCol) {
-      rowData[statusCol - 1] = '出品中';
+    // 出品ステータス（列名ゆれに対応）
+    const statusKey = ('出品ステータス' in outputColMap) ? '出品ステータス' : 'ステータス';
+    if (statusKey in outputColMap) {
+      outputRow[outputColMap[statusKey]] = '出品中';
       Logger.log('ステータスを設定: 出品中');
     } else {
-      Logger.log('⚠️ "出品ステータス"/"ステータス"列が見つかりません');
+      Logger.log('⚠️ 出品DBに "出品ステータス"/"ステータス" 列が見つかりません');
     }
 
-    // 現在日時を取得
+    // タイムスタンプ関連
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hour = String(now.getHours()).padStart(2, '0');
+    const year   = now.getFullYear();
+    const month  = String(now.getMonth() + 1).padStart(2, '0');
+    const day    = String(now.getDate()).padStart(2, '0');
+    const hour   = String(now.getHours()).padStart(2, '0');
     const minute = String(now.getMinutes()).padStart(2, '0');
     const second = String(now.getSeconds()).padStart(2, '0');
-
-    // タイムスタンプフォーマット: yyyy/mm/dd/hh:mm:ss
-    const timestamp = year + '/' + month + '/' + day + '/' + hour + ':' + minute + ':' + second;
-
-    // 管理年月フォーマット: yyyymm (数値)
+    const timestamp       = year + '/' + month + '/' + day + '/' + hour + ':' + minute + ':' + second;
     const managementMonth = parseInt(year + month);
 
-    // 出品タイムスタンプを設定
-    const timestampCol = headerMapping['出品タイムスタンプ'];
-    if (timestampCol) {
-      rowData[timestampCol - 1] = timestamp;
+    if ('出品タイムスタンプ' in outputColMap) {
+      outputRow[outputColMap['出品タイムスタンプ']] = timestamp;
       Logger.log('出品タイムスタンプを設定: ' + timestamp);
     } else {
-      Logger.log('⚠️ "出品タイムスタンプ"列が見つかりません');
+      Logger.log('⚠️ 出品DBに "出品タイムスタンプ" 列が見つかりません');
     }
 
-    // 管理年月を設定
-    const managementMonthCol = headerMapping['管理年月'];
-    if (managementMonthCol) {
-      rowData[managementMonthCol - 1] = managementMonth;
+    if ('管理年月' in outputColMap) {
+      outputRow[outputColMap['管理年月']] = managementMonth;
       Logger.log('管理年月を設定: ' + managementMonth);
     } else {
-      Logger.log('⚠️ "管理年月"列が見つかりません');
+      Logger.log('⚠️ 出品DBに "管理年月" 列が見つかりません');
     }
 
-    // 実データが入っている最終行を特定（空白行をスキップ）
-    // getLastRow() は書式だけ設定された空行もカウントするため URL 列で判定
-    const outputHeaders3 = outputSheet.getRange(3, 1, 1, outputSheet.getLastColumn()).getValues()[0];
-    const urlColInOutput = outputHeaders3.indexOf('出品URL');
-    let newRow = 4; // デフォルト: ヘッダー3行直後
+    // 対応状況をまとめてログ出力
+    Logger.log('=== 転記列マッピング（出品DB列名 → 値の元） ===');
+    outputHeaderRow.forEach(function(h, i) {
+      const colName = String(h || '').trim();
+      if (!colName) return;
+      const specialFields = ['Item ID', '出品URL', '出品ステータス', 'ステータス', '出品タイムスタンプ', '管理年月'];
+      if (specialFields.indexOf(colName) !== -1) {
+        Logger.log('  [' + (i + 1) + '] ' + colName + ' ← （出品後に設定）');
+      } else if (sourceHeaderMapping[colName]) {
+        Logger.log('  [' + (i + 1) + '] ' + colName + ' ← 出品シート[' + sourceHeaderMapping[colName] + ']');
+      } else {
+        Logger.log('  [' + (i + 1) + '] ' + colName + ' ← ⚠️ 出品シートに列なし（空白）');
+      }
+    });
+
+    // 実データが入っている最終行を特定（出品URL列で判定）
+    const urlColInOutput = outputHeaderRow.indexOf('出品URL');
+    let newRow = 4;
     if (urlColInOutput !== -1) {
       const colValues = outputSheet.getRange(1, urlColInOutput + 1, outputSheet.getLastRow(), 1).getValues();
       for (let i = colValues.length - 1; i >= 0; i--) {
-        if (colValues[i][0] !== '') {
-          newRow = i + 2; // 1-based + 次の行
-          break;
-        }
+        if (colValues[i][0] !== '') { newRow = i + 2; break; }
       }
       if (newRow < 4) newRow = 4;
     } else {
       newRow = outputSheet.getLastRow() + 1;
     }
     Logger.log('出品DB書き込み行: ' + newRow + '行目');
-    outputSheet.getRange(newRow, 1, 1, rowData.length).setValues([rowData]);
+    outputSheet.getRange(newRow, 1, 1, outputRow.length).setValues([outputRow]);
 
     Logger.log('✅ 出品DB転記完了: ' + newRow + '行目に追加');
 
@@ -1221,6 +1243,67 @@ function transferToOutputDb(spreadsheetId, rowNumber, listingData, result) {
     Logger.log('❌ 出品DB転記エラー: ' + error.toString());
     // 転記エラーは致命的ではないので、エラーをログに記録して続行
     return false;
+  } finally {
+    CURRENT_SPREADSHEET_ID = null;
+  }
+}
+
+/**
+ * 出品シートと出品DBのヘッダー一覧を Logger に出力するデバッグ関数
+ * GASエディタから直接実行して確認する
+ *
+ * @param {string} spreadsheetId 出品スプレッドシートID
+ */
+function debugTransferHeaders(spreadsheetId) {
+  try {
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+
+    const config = getEbayConfig();
+    const outputDbId = config.outputDbSpreadsheetId;
+
+    // 出品シートヘッダー
+    const sourceSheet = getTargetSpreadsheet().getSheetByName(SHEET_NAMES.LISTING);
+    const sourceHeaders = sourceSheet.getRange(3, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+
+    Logger.log('=== 出品シート ヘッダー一覧（3行目）===');
+    sourceHeaders.forEach(function(h, i) {
+      if (h) Logger.log('  ' + (i + 1) + '列: ' + h);
+    });
+    Logger.log('合計: ' + sourceHeaders.filter(Boolean).length + '列');
+
+    if (!outputDbId) {
+      Logger.log('⚠️ 出品DBが設定されていません');
+      return;
+    }
+
+    // 出品DBヘッダー
+    const outputSheet = SpreadsheetApp.openById(outputDbId).getSheetByName('出品');
+    if (!outputSheet) {
+      Logger.log('⚠️ 出品DBに「出品」シートが見つかりません');
+      return;
+    }
+    const outputHeaders = outputSheet.getRange(3, 1, 1, outputSheet.getLastColumn()).getValues()[0];
+
+    Logger.log('=== 出品DB ヘッダー一覧（3行目）===');
+    outputHeaders.forEach(function(h, i) {
+      if (h) Logger.log('  ' + (i + 1) + '列: ' + h);
+    });
+    Logger.log('合計: ' + outputHeaders.filter(Boolean).length + '列');
+
+    // 対応関係チェック
+    Logger.log('=== 転記対応チェック ===');
+    outputHeaders.forEach(function(h, i) {
+      if (!h) return;
+      const srcCol = sourceHeaders.indexOf(h);
+      if (srcCol !== -1) {
+        Logger.log('  ✅ 出品DB[' + (i + 1) + '] "' + h + '" ← 出品シート[' + (srcCol + 1) + ']');
+      } else {
+        Logger.log('  ❌ 出品DB[' + (i + 1) + '] "' + h + '" ← 出品シートに列なし（転記不可）');
+      }
+    });
+
+  } catch (e) {
+    Logger.log('❌ debugTransferHeaders エラー: ' + e.toString());
   } finally {
     CURRENT_SPREADSHEET_ID = null;
   }

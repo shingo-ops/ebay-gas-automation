@@ -34,7 +34,6 @@ function onOpen() {
 
   ui.createMenu('⚙️')
     .addItem('出品者情報設定', 'menuSetupSellerInfo')
-    .addItem('出品DB監視トリガー設定', 'menuSetupListingDbTrigger')
     .addItem('ポリシー取得', 'menuGetPolicies')
     .addItem('ポリシー更新', 'menuSyncPolicies')
     .addToUi();
@@ -42,6 +41,7 @@ function onOpen() {
   ui.createMenu('出品管理')
     .addItem('出品', 'menuCreateListing')
     .addItem('更新', 'menuUpdateListing')
+    .addItem('取り下げ', 'menuEndListing')
     .addToUi();
 }
 
@@ -125,6 +125,66 @@ function menuUpdateListing() {
     ui.alert('更新完了', result.message, ui.ButtonSet.OK);
   } else {
     ui.alert('エラー', result.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * 【取り下げ】アクティブ行の出品を取り下げる
+ */
+function menuEndListing() {
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const ui = SpreadsheetApp.getUi();
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  if (sheet.getName() !== '出品') {
+    ui.alert('エラー', '「出品」シートを選択してください。', ui.ButtonSet.OK);
+    return;
+  }
+
+  const row = sheet.getActiveRange().getRow();
+  if (row <= 3) {
+    ui.alert('エラー', 'データ行（4行目以降）を選択してください。', ui.ButtonSet.OK);
+    return;
+  }
+
+  const headerMapping = _buildListingHeaderMapping(sheet);
+  const itemIdCol = headerMapping['Item ID'];
+  if (!itemIdCol) {
+    ui.alert('エラー', '「Item ID」列が見つかりません。', ui.ButtonSet.OK);
+    return;
+  }
+
+  const itemId = String(sheet.getRange(row, itemIdCol).getValue() || '').trim();
+  if (!itemId) {
+    ui.alert('エラー', row + '行目の Item ID が空です。', ui.ButtonSet.OK);
+    return;
+  }
+
+  const titleCol = headerMapping['タイトル'];
+  const title    = titleCol ? String(sheet.getRange(row, titleCol).getValue() || '') : '（タイトル不明）';
+
+  const response = ui.alert(
+    '出品取り下げ確認',
+    'Item ID: ' + itemId + '\n商品名: ' + title + '\n\nこの出品を取り下げますか？',
+    ui.ButtonSet.YES_NO
+  );
+  if (response !== ui.Button.YES) return;
+
+  try {
+    const result = EbayLib.endFixedPriceItem(spreadsheetId, itemId);
+    if (result.success) {
+      const statusCol  = headerMapping['出品ステータス'] || headerMapping['ステータス'];
+      if (statusCol)  sheet.getRange(row, statusCol).setValue('End（完了）');
+      const endDateCol = headerMapping['取り下げ日時'];
+      if (endDateCol) sheet.getRange(row, endDateCol).setValue(
+        Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss')
+      );
+      ui.alert('完了', '✅ 取り下げが完了しました。\nItem ID: ' + itemId, ui.ButtonSet.OK);
+    } else {
+      ui.alert('エラー', '❌ 取り下げに失敗しました:\n' + result.message, ui.ButtonSet.OK);
+    }
+  } catch (e) {
+    ui.alert('エラー', '❌ 取り下げエラー:\n' + e.toString(), ui.ButtonSet.OK);
   }
 }
 
@@ -232,6 +292,16 @@ function handleEdit(e) {
     // ヘッダーマッピングを構築
     const headerMapping = _buildListingHeaderMapping(sheet);
 
+    // 出品ステータス → "End" の場合は取り下げ処理
+    const statusCol = headerMapping['出品ステータス'] || headerMapping['ステータス'];
+    if (statusCol && col === statusCol) {
+      const newStatus = String(e.value !== undefined ? e.value : range.getValue()).trim();
+      if (newStatus === 'End') {
+        _handleEndListing(e, sheet, headerMapping, row, spreadsheetId);
+      }
+      return;
+    }
+
     // スペックURL列の変更かどうかを確認
     const specUrlCol = headerMapping['スペックURL'];
     if (specUrlCol && col === specUrlCol) {
@@ -263,6 +333,68 @@ function handleEdit(e) {
     }
   } finally {
     lock.releaseLock();
+  }
+}
+
+/**
+ * 出品ステータス → "End" 時の取り下げ処理（handleEdit から呼び出す）
+ *
+ * @param {GoogleAppsScript.Events.SheetsOnEdit} e
+ * @param {Sheet} sheet
+ * @param {Object} headerMapping  列名→1-based列番号のマップ
+ * @param {number} row
+ * @param {string} spreadsheetId
+ */
+function _handleEndListing(e, sheet, headerMapping, row, spreadsheetId) {
+  const ui = SpreadsheetApp.getUi();
+
+  const statusCol  = headerMapping['出品ステータス'] || headerMapping['ステータス'];
+  const itemIdCol  = headerMapping['Item ID'];
+  if (!itemIdCol) {
+    Logger.log('⚠️ Item ID 列が見つかりません');
+    return;
+  }
+
+  const itemId = String(sheet.getRange(row, itemIdCol).getValue() || '').trim();
+  if (!itemId) {
+    Logger.log('⚠️ Item IDが空のためスキップ: row=' + row);
+    sheet.getRange(row, statusCol).setValue(e.oldValue || '出品中');
+    return;
+  }
+
+  const titleCol = headerMapping['タイトル'];
+  const title    = titleCol
+    ? String(sheet.getRange(row, titleCol).getValue() || '')
+    : '（タイトル不明）';
+
+  const response = ui.alert(
+    '出品取り下げ確認',
+    'Item ID: ' + itemId + '\n商品名: ' + title + '\n\nこの出品を取り下げますか？',
+    ui.ButtonSet.YES_NO
+  );
+
+  const statusCell = sheet.getRange(row, statusCol);
+
+  if (response !== ui.Button.YES) {
+    statusCell.setValue(e.oldValue || '出品中');
+    return;
+  }
+
+  const result = EbayLib.endFixedPriceItem(spreadsheetId, itemId);
+
+  if (result.success) {
+    statusCell.setValue('End（完了）');
+    const endDateCol = headerMapping['取り下げ日時'];
+    if (endDateCol) {
+      sheet.getRange(row, endDateCol).setValue(
+        Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss')
+      );
+    }
+    Logger.log('✅ 取り下げ完了: Item ID=' + itemId + ' row=' + row);
+  } else {
+    statusCell.setValue('End（失敗）');
+    ui.alert('エラー', '❌ 取り下げに失敗しました:\n' + result.message, ui.ButtonSet.OK);
+    Logger.log('❌ 取り下げ失敗: ' + result.message);
   }
 }
 
@@ -1028,153 +1160,4 @@ function _writeSpecsToListingSheet(sheet, row, headerMapping, sortedSpecs, catDa
   }
 
   Logger.log('[_writeSpecsToListingSheet] 書き込み完了: ' + limit + '件');
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 出品DB監視（取り下げ機能）
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * 出品DBの編集を検知するインストーラブルトリガー
- * ステータス列が "End" に変更された時、取り下げ確認 → EndFixedPriceItem を実行
- */
-function handleEditListingDB(e) {
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(3000)) {
-    Logger.log('⚠️ handleEditListingDB: ロック取得失敗（別の処理が実行中）');
-    return;
-  }
-
-  try {
-    if (!e || !e.range) return;
-
-    const sheet = e.range.getSheet();
-    if (sheet.getName() !== '出品') return;
-
-    const row = e.range.getRow();
-    if (row <= 3) return; // ヘッダー行スキップ
-
-    // ヘッダー行（3行目）を取得
-    const lastCol = sheet.getLastColumn();
-    const headers = sheet.getRange(3, 1, 1, lastCol).getValues()[0];
-
-    // ステータス列を特定（列名ゆれに対応）
-    const statusColIdx = headers.indexOf('出品ステータス') !== -1
-      ? headers.indexOf('出品ステータス')
-      : headers.indexOf('ステータス');
-    if (statusColIdx === -1) return;
-
-    // 編集されたのがステータス列か確認
-    if (e.range.getColumn() - 1 !== statusColIdx) return;
-
-    const newValue = String(e.value || '').trim();
-    if (newValue !== 'End') return;
-
-    // Item ID を取得
-    const itemIdColIdx = headers.indexOf('Item ID');
-    if (itemIdColIdx === -1) {
-      Logger.log('⚠️ Item ID 列が見つかりません');
-      return;
-    }
-    const itemId = String(sheet.getRange(row, itemIdColIdx + 1).getValue() || '').trim();
-    if (!itemId) {
-      Logger.log('⚠️ Item IDが空のためスキップ: row=' + row);
-      return;
-    }
-
-    // タイトルを取得
-    const titleColIdx = headers.indexOf('タイトル');
-    const title = titleColIdx !== -1
-      ? String(sheet.getRange(row, titleColIdx + 1).getValue() || '')
-      : '（タイトル不明）';
-
-    // 確認ポップアップ
-    const ui = SpreadsheetApp.getUi();
-    const response = ui.alert(
-      '出品取り下げ確認',
-      'Item ID: ' + itemId + '\n' +
-      '商品名: ' + title + '\n\n' +
-      'この出品を取り下げますか？',
-      ui.ButtonSet.YES_NO
-    );
-
-    const statusCell = sheet.getRange(row, statusColIdx + 1);
-
-    if (response !== ui.Button.YES) {
-      // NO → 元の値に戻す
-      statusCell.setValue(e.oldValue || '出品中');
-      return;
-    }
-
-    // 出品取り下げ API 実行
-    const listingSpreadsheetId = PropertiesService.getScriptProperties().getProperty('LISTING_SPREADSHEET_ID');
-    const result = EbayLib.endFixedPriceItem(listingSpreadsheetId, itemId);
-
-    if (result.success) {
-      statusCell.setValue('End（完了）');
-      // 取り下げ日時を記録
-      const endDateColIdx = headers.indexOf('取り下げ日時');
-      if (endDateColIdx !== -1) {
-        const ts = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
-        sheet.getRange(row, endDateColIdx + 1).setValue(ts);
-      }
-      Logger.log('✅ 取り下げ完了: Item ID=' + itemId + ' row=' + row);
-    } else {
-      statusCell.setValue('End（失敗）');
-      Logger.log('❌ 取り下げ失敗: ' + result.message);
-    }
-
-  } catch (error) {
-    Logger.log('❌ handleEditListingDB エラー: ' + error.toString());
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/**
- * 出品DB監視トリガーを登録する
- * ⚙️ → 出品DB監視トリガー設定 から実行
- */
-function menuSetupListingDbTrigger() {
-  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
-  const ui = SpreadsheetApp.getUi();
-
-  try {
-    const outputDbId = EbayLib.getOutputDbSpreadsheetId(spreadsheetId);
-    if (!outputDbId) {
-      ui.alert('エラー', '「ツール設定」シートに出品DBが設定されていません。', ui.ButtonSet.OK);
-      return;
-    }
-
-    // 既存の handleEditListingDB トリガーを削除（重複防止）
-    const currentSs = SpreadsheetApp.getActiveSpreadsheet();
-    ScriptApp.getUserTriggers(currentSs).forEach(function(t) {
-      if (t.getHandlerFunction() === 'handleEditListingDB') {
-        ScriptApp.deleteTrigger(t);
-      }
-    });
-
-    // 出品DBを監視するトリガーを登録
-    const outputSs = SpreadsheetApp.openById(outputDbId);
-    ScriptApp.newTrigger('handleEditListingDB')
-      .forSpreadsheet(outputSs)
-      .onEdit()
-      .create();
-
-    // 出品元スプレッドシートIDをプロパティに保存
-    PropertiesService.getScriptProperties().setProperty('LISTING_SPREADSHEET_ID', spreadsheetId);
-
-    ui.alert(
-      'トリガー設定完了',
-      '✅ 出品DB監視トリガーを設定しました\n\n' +
-      '出品DBの「ステータス」列を「End」に変更すると\n' +
-      '取り下げ確認ポップアップが表示されます。',
-      ui.ButtonSet.OK
-    );
-    Logger.log('✅ handleEditListingDB トリガー登録完了 (出品DB: ' + outputDbId + ')');
-
-  } catch (error) {
-    ui.alert('エラー', '❌ トリガー設定エラー:\n' + error.toString(), ui.ButtonSet.OK);
-    Logger.log('❌ menuSetupListingDbTrigger エラー: ' + error.toString());
-  }
 }
