@@ -400,13 +400,13 @@ function validateListingData(data) {
     const autoDecline = data.autoDeclinePrice !== '' && data.autoDeclinePrice !== null ? parseFloat(data.autoDeclinePrice) : null;
 
     if (autoDecline !== null && autoDecline < 0) {
-      errors.push('Auto Decline Price は 0 以上の値を入力してください');
+      errors.push('拒否価格 は 0 以上の値を入力してください');
     }
     if (autoAccept !== null && autoDecline !== null && autoAccept <= autoDecline) {
-      errors.push('Auto Accept Price は Auto Decline Price より大きい値を入力してください');
+      errors.push('承認価格 は 拒否価格 より大きい値を入力してください');
     }
     if (autoAccept !== null && !isNaN(price) && autoAccept > price) {
-      errors.push('Auto Accept Price は即決価格（' + price + '$）以下にしてください');
+      errors.push('承認価格 は即決価格（' + price + '$）以下にしてください');
     }
   }
 
