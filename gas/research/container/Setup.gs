@@ -670,13 +670,43 @@ function fetchSpecFromUrl(url, sheet) {
         return;
       }
 
-      // YES → category_id / category_name / item_specs_json を更新
+      // YES → _cache の category_id / category_name / item_specs_json を更新
       updateCacheRow2({
         categoryId:   newCategoryId,
         categoryName: newCategoryName,
         specifics:    newSpecifics
       });
-      Logger.log('[Spec] カテゴリ+スペック更新完了: ' + newCategoryId);
+
+      // シートの G8/H8 も新カテゴリに更新
+      sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.CATEGORY_ID.col).setValue(newCategoryId);
+      sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.CATEGORY_NAME.col).setValue(newCategoryName);
+
+      // E8（状態）プルダウンを新カテゴリで再生成
+      setConditionDropdown(newCategoryId, sheet);
+
+      // 旧コンディション値が新カテゴリのプルダウンに存在しない場合はクリア
+      const conditionCell     = sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.CONDITION.col);
+      const oldConditionValue = String(conditionCell.getValue() || '');
+      if (oldConditionValue) {
+        const categoryMasterSs = openCategoryMasterSs();
+        if (categoryMasterSs) {
+          const group      = getConditionGroupForCategory(categoryMasterSs, newCategoryId);
+          const jaMap      = group ? getJaMapForGroup(categoryMasterSs, group) : null;
+          const validOptions = jaMap
+            ? Object.values(jaMap).filter(function(v) { return v && v.trim() !== ''; })
+            : [];
+          if (validOptions.indexOf(oldConditionValue) === -1) {
+            conditionCell.clearContent();
+            SpreadsheetApp.getUi().alert(
+              'コンディション再選択',
+              '選択されていた「' + oldConditionValue + '」は新しいカテゴリでは使用できません。\nプルダウンから再度選択してください。',
+              SpreadsheetApp.getUi().ButtonSet.OK
+            );
+          }
+        }
+      }
+
+      Logger.log('[Spec] カテゴリ+スペック+プルダウン更新完了: ' + newCategoryId);
       SpreadsheetApp.getActiveSpreadsheet().toast(
         'カテゴリとスペックを更新しました（' + newCategoryId + ' / ' + newCategoryName + '）',
         '✅ 完了', 3
