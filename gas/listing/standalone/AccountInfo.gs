@@ -16,11 +16,9 @@
  */
 function menuFetchAccountInfo(spreadsheetId) {
   try {
-    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
     autoRefreshTokenIfNeeded(spreadsheetId);
-    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId; // re-set after refresh (refresh resets to null)
 
-    const result = _fetchAndWriteAccountInfo();
+    const result = _fetchAndWriteAccountInfo(spreadsheetId);
 
     return {
       success: true,
@@ -36,8 +34,6 @@ function menuFetchAccountInfo(spreadsheetId) {
       success: false,
       message: '❌ アカウント情報取得エラー:\n' + e.toString()
     };
-  } finally {
-    CURRENT_SPREADSHEET_ID = null;
   }
 }
 
@@ -45,7 +41,10 @@ function menuFetchAccountInfo(spreadsheetId) {
 // プライベート
 // ─────────────────────────────────────────────────────────────
 
-function _fetchAndWriteAccountInfo() {
+function _fetchAndWriteAccountInfo(spreadsheetId) {
+  // 常にIDを再セット（token refresh が CURRENT_SPREADSHEET_ID を null にリセットするため）
+  if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+
   const userInfo  = _getUserInfoFromTradingApi();
   const storePlan = _getStorePlanFromAccountApi();
 
