@@ -305,8 +305,10 @@ function readListingDataFromSheet(spreadsheetId, rowNumber) {
     // 価格・数量
     quantity: getValueByHeader(rowData, headerMapping, '個数'),
     price: getValueByHeader(rowData, headerMapping, '売値($)'),
-    bestOffer: getValueByHeader(rowData, headerMapping, 'Best offer'),
-    promotedListing: getValueByHeader(rowData, headerMapping, 'Promoted Listing'),
+    bestOfferEnabled: String(getValueByHeader(rowData, headerMapping, 'Best Offer') || '').trim().toUpperCase() === 'ON',
+    autoAcceptPrice:  getValueByHeader(rowData, headerMapping, 'Auto Accept Price'),
+    autoDeclinePrice: getValueByHeader(rowData, headerMapping, 'Auto Decline Price'),
+    promotedListing:  getValueByHeader(rowData, headerMapping, 'Promoted Listing'),
 
     // ワード判定
     wordCheck: getValueByHeader(rowData, headerMapping, 'ワード判定'),
@@ -389,6 +391,23 @@ function validateListingData(data) {
   // SKU文字数制限（50文字）
   if (data.sku && data.sku.length > 50) {
     errors.push('SKUは50文字以内にしてください');
+  }
+
+  // Best Offer バリデーション
+  if (data.bestOfferEnabled) {
+    const price       = parseFloat(data.price);
+    const autoAccept  = data.autoAcceptPrice  !== '' && data.autoAcceptPrice  !== null ? parseFloat(data.autoAcceptPrice)  : null;
+    const autoDecline = data.autoDeclinePrice !== '' && data.autoDeclinePrice !== null ? parseFloat(data.autoDeclinePrice) : null;
+
+    if (autoDecline !== null && autoDecline < 0) {
+      errors.push('Auto Decline Price は 0 以上の値を入力してください');
+    }
+    if (autoAccept !== null && autoDecline !== null && autoAccept <= autoDecline) {
+      errors.push('Auto Accept Price は Auto Decline Price より大きい値を入力してください');
+    }
+    if (autoAccept !== null && !isNaN(price) && autoAccept > price) {
+      errors.push('Auto Accept Price は即決価格（' + price + '$）以下にしてください');
+    }
   }
 
   return errors;
@@ -526,6 +545,8 @@ function addItemWithTradingApi(listingData, policyIds) {
   }
 
   // Seller Profiles（ポリシー）
+  // Best Offer ON の場合は支払いポリシーを除外（ポリシー側の即時支払い設定が Error 23015 を引き起こすため）
+  const hasBestOffer = listingData.bestOfferEnabled === true;
   xmlBody += '<SellerProfiles>' +
     '<SellerShippingProfile>' +
     '<ShippingProfileID>' + policyIds.shippingPolicyId + '</ShippingProfileID>' +
@@ -533,9 +554,11 @@ function addItemWithTradingApi(listingData, policyIds) {
     '<SellerReturnProfile>' +
     '<ReturnProfileID>' + policyIds.returnPolicyId + '</ReturnProfileID>' +
     '</SellerReturnProfile>' +
-    '<SellerPaymentProfile>' +
-    '<PaymentProfileID>' + policyIds.paymentPolicyId + '</PaymentProfileID>' +
-    '</SellerPaymentProfile>' +
+    (hasBestOffer ? '' :
+      '<SellerPaymentProfile>' +
+      '<PaymentProfileID>' + policyIds.paymentPolicyId + '</PaymentProfileID>' +
+      '</SellerPaymentProfile>'
+    ) +
     '</SellerProfiles>';
 
   // Item Specifics
@@ -570,14 +593,27 @@ function addItemWithTradingApi(listingData, policyIds) {
     xmlBody += '</ProductListingDetails>';
   }
 
-  // Best Offer（数値入力で自動拒否価格を設定）
-  // 例: Best offer列に「1000」と入力 → $1000未満のオファーは自動拒否
-  if (listingData.bestOffer && !isNaN(parseFloat(listingData.bestOffer))) {
-    const minPrice = parseFloat(listingData.bestOffer);
-    xmlBody += '<BestOfferDetails>' +
-      '<BestOfferEnabled>true</BestOfferEnabled>' +
-      '<MinimumBestOfferPrice currencyID="USD">' + minPrice + '</MinimumBestOfferPrice>' +
-      '</BestOfferDetails>';
+  // Best Offer
+  if (hasBestOffer) {
+    xmlBody += '<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>';
+
+    const autoAccept  = listingData.autoAcceptPrice  !== '' && listingData.autoAcceptPrice  !== null ? parseFloat(listingData.autoAcceptPrice)  : null;
+    const autoDecline = listingData.autoDeclinePrice !== '' && listingData.autoDeclinePrice !== null ? parseFloat(listingData.autoDeclinePrice) : null;
+
+    if (autoAccept !== null || autoDecline !== null) {
+      let listingDetails = '';
+      if (autoDecline !== null && !isNaN(autoDecline)) {
+        listingDetails += '<MinimumBestOfferPrice currencyID="USD">' + autoDecline + '</MinimumBestOfferPrice>';
+      }
+      if (autoAccept !== null && !isNaN(autoAccept)) {
+        listingDetails += '<BestOfferAutoAcceptPrice currencyID="USD">' + autoAccept + '</BestOfferAutoAcceptPrice>';
+      }
+      xmlBody += '<ListingDetails>' + listingDetails + '</ListingDetails>';
+    }
+
+    xmlBody += '<AutoPay>false</AutoPay>';
+  } else {
+    xmlBody += '<AutoPay>true</AutoPay>';
   }
 
   xmlBody += '</Item>' +
