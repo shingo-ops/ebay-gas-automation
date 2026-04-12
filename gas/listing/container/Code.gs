@@ -32,15 +32,16 @@
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
 
+  ui.createMenu('⚙️')
+    .addItem('アカウント情報取得', 'menuFetchAccountInfo')
+    .addItem('出品者情報設定', 'menuSetupSellerInfo')
+    .addItem('ポリシー取得', 'menuGetPolicies')
+    .addItem('ポリシー更新', 'menuSyncPolicies')
+    .addToUi();
+
   ui.createMenu('出品管理')
     .addItem('出品', 'menuCreateListing')
     .addItem('更新', 'menuUpdateListing')
-    .addToUi();
-
-  ui.createMenu('⚙️')
-    .addItem('アカウント情報取得', 'menuFetchAccountInfo')
-    .addItem('ポリシー取得', 'menuGetPolicies')
-    .addItem('ポリシー更新', 'menuSyncPolicies')
     .addToUi();
 }
 
@@ -144,6 +145,17 @@ function menuSetupEbayManager() {
   const result = EbayLib.setupEbayManager(spreadsheetId);
   if (result.success) {
     ui.alert('セットアップ完了', result.message, ui.ButtonSet.OK);
+  } else {
+    ui.alert('エラー', result.message, ui.ButtonSet.OK);
+  }
+}
+
+function menuSetupSellerInfo() {
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const ui = SpreadsheetApp.getUi();
+  const result = EbayLib.setupSellerInfo(spreadsheetId);
+  if (result.success) {
+    ui.alert('出品者情報設定完了', result.message, ui.ButtonSet.OK);
   } else {
     ui.alert('エラー', result.message, ui.ButtonSet.OK);
   }

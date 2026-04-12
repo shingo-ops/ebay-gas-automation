@@ -488,13 +488,69 @@ function mapConditionId(conditionStr) {
  * @returns {string}
  */
 function _getPostalCode(config) {
+  // 1. ツール設定シートの値を優先
   if (config.postalCode && String(config.postalCode).trim() !== '') {
     return String(config.postalCode).trim();
   }
+  // 2. PropertiesService にフォールバック
   const saved = PropertiesService.getScriptProperties().getProperty('POSTAL_CODE');
   if (saved) return saved;
   Logger.log('⚠️ 郵便番号が設定されていません。ツール設定シートの「郵便番号」に値を入力してください。');
   return '';
+}
+
+/**
+ * 出品者情報（PostalCode・Location）を PropertiesService に保存
+ * ツール設定シートから読み込み、フォーマット検証後に保存する
+ * authorizeScript から呼び出す
+ *
+ * @param {string} spreadsheetId
+ * @returns {{ success: boolean, postalCode: string, location: string, message: string }}
+ */
+function setupSellerInfo(spreadsheetId) {
+  try {
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+
+    const config     = getEbayConfig();
+    const postalCode = String(config.postalCode || '').trim();
+    const location   = String(config.itemLocation || 'Japan').trim();
+
+    if (postalCode === '') {
+      return {
+        success: false,
+        postalCode: '',
+        location: location,
+        message: '⚠️ ツール設定シートの「郵便番号」が未入力です。⚙️ → アカウント情報取得 を先に実行してください。'
+      };
+    }
+
+    // 日本の郵便番号フォーマット検証（XXX-XXXX）
+    if (!/^\d{3}-\d{4}$/.test(postalCode)) {
+      return {
+        success: false,
+        postalCode: postalCode,
+        location: location,
+        message: '⚠️ 郵便番号のフォーマットが不正です（' + postalCode + '）。XXX-XXXX 形式で入力してください。'
+      };
+    }
+
+    const props = PropertiesService.getScriptProperties();
+    props.setProperty('POSTAL_CODE',   postalCode);
+    props.setProperty('ITEM_LOCATION', location);
+
+    Logger.log('✅ setupSellerInfo: PostalCode=' + postalCode + ' Location=' + location);
+    return {
+      success: true,
+      postalCode: postalCode,
+      location: location,
+      message: '✅ 出品者情報を保存しました\n郵便番号: ' + postalCode + '\n出品所在地: ' + location
+    };
+  } catch (e) {
+    Logger.log('❌ setupSellerInfo エラー: ' + e.toString());
+    return { success: false, postalCode: '', location: '', message: '❌ ' + e.toString() };
+  } finally {
+    CURRENT_SPREADSHEET_ID = null;
+  }
 }
 
 function escapeXml(str) {
