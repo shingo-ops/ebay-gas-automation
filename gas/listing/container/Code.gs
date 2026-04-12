@@ -197,7 +197,7 @@ function menuEndListing() {
     const result = EbayLib.endFixedPriceItem(spreadsheetId, itemId);
     if (result.success) {
       const statusCol  = headerMapping['出品ステータス'] || headerMapping['ステータス'];
-      if (statusCol)  sheet.getRange(row, statusCol).setValue('End（完了）');
+      if (statusCol)  sheet.getRange(row, statusCol).setValue('Ended');
       const endDateCol = headerMapping['取り下げ日時'];
       if (endDateCol) sheet.getRange(row, endDateCol).setValue(
         Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss')
@@ -381,7 +381,7 @@ function _handleEndListing(e, sheet, headerMapping, row, spreadsheetId) {
   const itemId = String(sheet.getRange(row, itemIdCol).getValue() || '').trim();
   if (!itemId) {
     Logger.log('⚠️ Item IDが空のためスキップ: row=' + row);
-    sheet.getRange(row, statusCol).setValue(e.oldValue || '出品中');
+    sheet.getRange(row, statusCol).setValue(e.oldValue || 'Active');
     return;
   }
 
@@ -399,14 +399,14 @@ function _handleEndListing(e, sheet, headerMapping, row, spreadsheetId) {
   const statusCell = sheet.getRange(row, statusCol);
 
   if (response !== ui.Button.YES) {
-    statusCell.setValue(e.oldValue || '出品中');
+    statusCell.setValue(e.oldValue || 'Active');
     return;
   }
 
   const result = EbayLib.endFixedPriceItem(spreadsheetId, itemId);
 
   if (result.success) {
-    statusCell.setValue('End（完了）');
+    statusCell.setValue('Ended');
     const endDateCol = headerMapping['取り下げ日時'];
     if (endDateCol) {
       sheet.getRange(row, endDateCol).setValue(
@@ -415,7 +415,7 @@ function _handleEndListing(e, sheet, headerMapping, row, spreadsheetId) {
     }
     Logger.log('✅ 取り下げ完了: Item ID=' + itemId + ' row=' + row);
   } else {
-    statusCell.setValue('End（失敗）');
+    statusCell.setValue('End Failed');
     ui.alert('エラー', '❌ 取り下げに失敗しました:\n' + result.message, ui.ButtonSet.OK);
     Logger.log('❌ 取り下げ失敗: ' + result.message);
   }

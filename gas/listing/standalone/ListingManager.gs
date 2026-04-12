@@ -1368,8 +1368,8 @@ function transferToOutputDb(spreadsheetId, rowNumber, listingData, result) {
     // 出品ステータス（列名ゆれに対応）
     const statusKey = ('出品ステータス' in outputColMap) ? '出品ステータス' : 'ステータス';
     if (statusKey in outputColMap) {
-      outputRow[outputColMap[statusKey]] = '出品中';
-      Logger.log('ステータスを設定: 出品中');
+      outputRow[outputColMap[statusKey]] = 'Active';
+      Logger.log('ステータスを設定: Active');
     } else {
       Logger.log('⚠️ 出品DBに "出品ステータス"/"ステータス" 列が見つかりません');
     }
