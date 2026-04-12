@@ -974,7 +974,7 @@ function transferToOutputDb(spreadsheetId, rowNumber, listingData, result) {
     }
 
     // 出品ステータスを"出品中"に設定
-    const statusCol = headerMapping['ステータス'];
+    const statusCol = headerMapping['出品ステータス'];
     if (statusCol) {
       rowData[statusCol - 1] = '出品中';
       Logger.log('ステータスを設定: 出品中');
