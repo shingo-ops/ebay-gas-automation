@@ -1654,7 +1654,9 @@ function getTransferHeadersResult(spreadsheetId) {
 }
 
 /**
- * 出品シートの指定行データをクリア（書式・数式・入力規則は維持）
+ * 出品シートの指定行データをクリア（書式は維持）
+ * - セル値をクリア（clearContent）
+ * - データ入力規則（プルダウン等）も全列クリア（clearDataValidations）
  *
  * @param {string} spreadsheetId スプレッドシートID
  * @param {number} rowNumber クリアする行番号
@@ -1670,10 +1672,15 @@ function clearAndMoveListingRow(spreadsheetId, rowNumber) {
 
     if (rowNumber < 5) throw new Error('ヘッダー行（1-4行目）は処理できません');
 
-    // データをクリア（数式・入力規則・書式は維持）
     const lastCol = listingSheet.getLastColumn();
-    listingSheet.getRange(rowNumber, 1, 1, lastCol).clearContent();
-    Logger.log('✅ データクリア完了: ' + rowNumber + '行目');
+    const rowRange = listingSheet.getRange(rowNumber, 1, 1, lastCol);
+
+    // データをクリア（書式は維持）
+    rowRange.clearContent();
+    // データ入力規則（プルダウン）を全列クリア
+    rowRange.clearDataValidations();
+
+    Logger.log('✅ データ・入力規則クリア完了: ' + rowNumber + '行目');
 
   } catch (error) {
     Logger.log('⚠️ 行クリアエラー（出品は成功済み）: ' + error.toString());
