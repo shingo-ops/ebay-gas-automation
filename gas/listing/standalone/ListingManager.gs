@@ -520,7 +520,6 @@ function addItemWithTradingApi(listingData, policyIds) {
     '<ListingDuration>GTC</ListingDuration>' +
     '<ListingType>FixedPriceItem</ListingType>' +
     '<Location>' + escapeXml(config.itemLocation) + '</Location>' +
-    (config.postalCode ? '<PostalCode>' + escapeXml(config.postalCode) + '</PostalCode>' : '') +
     '<PaymentMethods>PayPal</PaymentMethods>' +
     '<Quantity>' + parseInt(listingData.quantity) + '</Quantity>' +
     '<Site>US</Site>';
