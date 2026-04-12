@@ -586,7 +586,7 @@ function transferListingDataWithPolicy(policyRow, policyLabel) {
     }
 
     // _cache から商品情報を取得（キャッシュ優先、空の場合のみ API フォールバック）
-    SpreadsheetApp.getActiveSpreadsheet().toast('商品情報を取得中...', '出品準備 (' + policyLabel + ')', 10);
+    SpreadsheetApp.getActiveSpreadsheet().toast('出品データを準備中...', '出品 (' + policyLabel + ')', 10);
 
     let itemInfo, specInfo;
     const cacheRow = getCacheRow2();
