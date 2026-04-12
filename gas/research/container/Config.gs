@@ -136,7 +136,7 @@ const RESEARCH_ROWS = {
 
 const LISTING_ROWS = {
   HEADER: 1,       // ヘッダー行（1行目）
-  DATA_START: 2    // データ開始行
+  DATA_START: 5    // データ開始行
 };
 
 // メインシートの列定義（126列 - SKU列追加+担当者列5つ追加により+6）
