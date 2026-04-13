@@ -33,6 +33,8 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
 
   ui.createMenu('⚙️')
+    .addItem('権限承認・トリガー登録', 'authorizeScript')
+    .addSeparator()
     .addItem('出品者情報設定', 'menuSetupSellerInfo')
     .addItem('ポリシー取得', 'menuGetPolicies')
     .addItem('ポリシー更新', 'menuSyncPolicies')
@@ -1261,6 +1263,7 @@ function menuSyncSheet() {
 
   const html = HtmlService.createHtmlOutput(
     '<html><body style="font-family:sans-serif; padding:16px;">' +
+    '<p style="font-size:11px; color:#d32f2f; margin-bottom:8px;">⚠️ <b>プルダウン管理</b>・<b>ツール設定</b> は他のシートより先に同期してください。先に同期しないと数式・プルダウンエラーが発生する場合があります。</p>' +
     '<p style="font-size:13px; font-weight:bold; margin-bottom:8px;">同期するシートを選択してください：</p>' +
     '<select id="sheetName" style="width:100%; padding:6px; font-size:13px; margin-bottom:12px;">' +
     EbayLib.getSyncTargetSheets().map(function(s) {
@@ -1307,7 +1310,7 @@ function menuSyncSheet() {
     '}' +
     '</script>' +
     '</body></html>'
-  ).setTitle('シート情報更新').setWidth(400).setHeight(280);
+  ).setTitle('シート情報更新').setWidth(420).setHeight(320);
 
   ui.showModalDialog(html, 'シート情報更新');
 }
