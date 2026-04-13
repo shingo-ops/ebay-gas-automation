@@ -198,13 +198,36 @@ function prepareTransferDataWithMapping(itemInfo, specInfo, listingSheet, header
     volumetricWeight: researchSheet.getRange(RESEARCH_MAIN_INFO.DATA_ROW, RESEARCH_MAIN_INFO.COLUMNS.VOLUMETRIC_WEIGHT_G.col).getValue()
   };
 
+  // 10行目（ヘッダー行）からマッピングを構築
+  const priceInfoHeaderRow = researchSheet.getRange(
+    RESEARCH_PRICE_INFO.HEADER_ROW, 1, 1, researchSheet.getLastColumn()
+  ).getValues()[0];
+
+  const priceInfoMap = {};
+  priceInfoHeaderRow.forEach(function(h, i) {
+    const header = String(h || '').trim();
+    if (header) priceInfoMap[header] = i + 1; // 1-based
+  });
+  Logger.log('priceInfoMap: ' + JSON.stringify(priceInfoMap));
+
+  // ヘッダー名で列を動的取得
+  function getPriceInfoValue(headerName) {
+    const col = priceInfoMap[headerName];
+    if (!col) {
+      Logger.log('⚠️ priceInfo列が見つかりません: ' + headerName);
+      return '';
+    }
+    return researchSheet.getRange(RESEARCH_PRICE_INFO.DATA_ROW, col).getValue() || '';
+  }
+
   const priceInfo = {
-    purchaseKeyword: researchSheet.getRange(RESEARCH_PRICE_INFO.DATA_ROW, RESEARCH_PRICE_INFO.COLUMNS.PURCHASE_KEYWORD.col).getValue(),
-    purchaseUrl1: researchSheet.getRange(RESEARCH_PRICE_INFO.DATA_ROW, RESEARCH_PRICE_INFO.COLUMNS.PURCHASE_URL_1.col).getValue(),
-    purchaseUrl2: researchSheet.getRange(RESEARCH_PRICE_INFO.DATA_ROW, RESEARCH_PRICE_INFO.COLUMNS.PURCHASE_URL_2.col).getValue(),
-    purchaseUrl3: researchSheet.getRange(RESEARCH_PRICE_INFO.DATA_ROW, RESEARCH_PRICE_INFO.COLUMNS.PURCHASE_URL_3.col).getValue(),
-    memo: researchSheet.getRange(RESEARCH_PRICE_INFO.DATA_ROW, RESEARCH_PRICE_INFO.COLUMNS.MEMO.col).getValue(),
-    imageUrl: researchSheet.getRange(RESEARCH_PRICE_INFO.DATA_ROW, RESEARCH_PRICE_INFO.COLUMNS.IMAGE_URL.col).getValue()
+    purchaseKeyword: getPriceInfoValue(RESEARCH_PRICE_INFO_HEADERS.PURCHASE_KEYWORD),
+    purchaseUrl1:    getPriceInfoValue(RESEARCH_PRICE_INFO_HEADERS.PURCHASE_URL1),
+    purchaseUrl2:    getPriceInfoValue(RESEARCH_PRICE_INFO_HEADERS.PURCHASE_URL2),
+    purchaseUrl3:    getPriceInfoValue(RESEARCH_PRICE_INFO_HEADERS.PURCHASE_URL3),
+    imageUrl:        getPriceInfoValue(RESEARCH_PRICE_INFO_HEADERS.IMAGE_URL),
+    conditionDesc:   getPriceInfoValue(RESEARCH_PRICE_INFO_HEADERS.CONDITION_DESC),
+    memo:            getPriceInfoValue(RESEARCH_PRICE_INFO_HEADERS.MEMO)
   };
 
   const itemList = {
@@ -353,9 +376,9 @@ function prepareTransferDataWithMapping(itemInfo, specInfo, listingSheet, header
   // 状態
   setValueByHeader(LISTING_COLUMNS.CONDITION.header, itemList.condition);
 
-  // 状態説明（空）
+  // 状態説明（リサーチシートの「状態説明欄」列から取得・なければ空）
   setValueByHeader(LISTING_COLUMNS.CONDITION_DESC_TEMPLATE.header, '');
-  setValueByHeader(LISTING_COLUMNS.CONDITION_DESC_2.header, '');
+  setValueByHeader(LISTING_COLUMNS.CONDITION_DESC_2.header, priceInfo.conditionDesc || '');
   setValueByHeader(LISTING_COLUMNS.DESCRIPTION.header, '');
 
   // ItemURL

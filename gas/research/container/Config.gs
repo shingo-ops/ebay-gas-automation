@@ -78,6 +78,17 @@ const RESEARCH_PRICE_INFO = {
   }
 };
 
+// RESEARCH_PRICE_INFO のヘッダー名定義（列番号に依存しない動的取得用）
+const RESEARCH_PRICE_INFO_HEADERS = {
+  PURCHASE_KEYWORD: '仕入れキーワード',
+  PURCHASE_URL1:    '仕入元URL①',
+  PURCHASE_URL2:    '仕入元URL②',
+  PURCHASE_URL3:    '仕入元URL③',
+  IMAGE_URL:        '画像URL',
+  CONDITION_DESC:   '状態説明欄',
+  MEMO:             'メモ'
+};
+
 // B7:P8 - 商品リストセクション
 const RESEARCH_ITEM_LIST = {
   HEADER_ROW: 7,
