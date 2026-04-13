@@ -1,23 +1,14 @@
 {
   "timeZone": "Asia/Tokyo",
-  "dependencies": {
-    "libraries": [
-      {
-        "userSymbol": "EbayLib",
-        "version": "0",
-        "libraryId": "13B_QVLCmt-KuxsyytDsS-2Ca6S_PLyNb-ZlEVbpg0T5-vEvM3otTLn1Y",
-        "developmentMode": true
-      }
-    ]
-  },
+  "dependencies": {},
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8",
   "oauthScopes": [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/script.external_request",
     "https://www.googleapis.com/auth/script.scriptapp",
     "https://www.googleapis.com/auth/script.container.ui",
-    "https://www.googleapis.com/auth/script.external_request"
+    "https://www.googleapis.com/auth/script.storage"
   ]
 }
