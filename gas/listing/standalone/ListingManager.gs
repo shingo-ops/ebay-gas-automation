@@ -1808,6 +1808,65 @@ function writeBackToListingSheet(spreadsheetId, rowNumber, itemId) {
 }
 
 /**
+ * EPSアップロード済みURLを出品シートの画像列に書き戻す
+ * 次回更新時にAPIを再度叩かずに済む
+ *
+ * @param {string} spreadsheetId 出品スプレッドシートID
+ * @param {number} rowNumber 対象行番号
+ * @param {Array} originalImages 元の画像URL配列（extractImageUrls()の出力順）
+ * @param {Array} epsUrls EPS URL配列（uploadAllImagesToEPS()の出力順）
+ * @param {Object} headerMapping ヘッダーマッピング
+ */
+function writeEpsUrlsToSheet(spreadsheetId, rowNumber, originalImages, epsUrls, headerMapping) {
+  try {
+    if (!epsUrls || epsUrls.length === 0) return;
+
+    Logger.log('=== EPS URL書き戻し開始: ' + epsUrls.length + '件 ===');
+
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+    const sheet = getTargetSpreadsheet(spreadsheetId).getSheetByName(SHEET_NAMES.LISTING);
+    if (!sheet) return;
+
+    // extractImageUrls() と同じ順番で列を走査
+    // 画像1〜23 → ストア画像 の順
+    const imageColNames = [];
+    for (let i = 1; i <= 23; i++) {
+      imageColNames.push('画像' + i);
+    }
+    imageColNames.push('ストア画像');
+
+    let epsIndex = 0;
+    let writeCount = 0;
+
+    for (let i = 0; i < imageColNames.length; i++) {
+      const colName = imageColNames[i];
+      const colNum = headerMapping[colName];
+      if (!colNum) continue;
+
+      // 元のURLが存在する列のみ書き戻す
+      const originalUrl = sheet.getRange(rowNumber, colNum).getDisplayValue().trim();
+      if (!originalUrl) continue;
+
+      // 対応するEPS URLがあれば書き戻す
+      if (epsIndex < epsUrls.length && epsUrls[epsIndex]) {
+        sheet.getRange(rowNumber, colNum).setValue(epsUrls[epsIndex]);
+        Logger.log('EPS URL書き戻し: ' + colName + ' → ' + epsUrls[epsIndex].substring(0, 50) + '...');
+        writeCount++;
+      }
+      epsIndex++;
+    }
+
+    Logger.log('✅ EPS URL書き戻し完了: ' + writeCount + '列');
+
+  } catch (e) {
+    Logger.log('⚠️ EPS URL書き戻しエラー（出品は継続）: ' + e.toString());
+    // 書き戻し失敗は致命的ではないため出品処理は継続
+  } finally {
+    CURRENT_SPREADSHEET_ID = null;
+  }
+}
+
+/**
  * 出品シートと出品DBのヘッダー一覧を Logger に出力するデバッグ関数
  * GASエディタから直接実行して確認する
  *
@@ -2098,6 +2157,12 @@ function createListing(spreadsheetId, rowNumber) {
       }
       listingData.images = epsImages;
       Logger.log('✅ 画像EPSアップロード完了: ' + epsImages.length + '枚');
+
+      // EPS URLを出品シートに書き戻す（次回更新時のAPI節約）
+      const headerMappingForEps = buildHeaderMapping();
+      writeEpsUrlsToSheet(spreadsheetId, rowNumber, listingData.images, epsImages, headerMappingForEps);
+      // CURRENT_SPREADSHEET_IDを再セット
+      if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
     }
     // CURRENT_SPREADSHEET_IDを再セット
     if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
