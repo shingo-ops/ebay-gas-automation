@@ -34,6 +34,12 @@ Pythonスクリプトを管理するリポジトリ。
 - condition_group_map: グループ別conditions_json（26行）
 - category_condition_map: カテゴリ×コンディションマッピング
 
+## 開発フロー
+- 1機能1PR を原則とする
+- develop で実装 → 動作確認 → PR作成 → main マージ（本番反映）
+- 複数機能をまとめてdevelopに積み上げない
+- PR前に必ず動作確認を行う
+
 ## やってはいけないこと
 - .envファイルをコミットしない
 - APIキー・トークンをコードに直接書かない
