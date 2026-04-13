@@ -981,12 +981,23 @@ function getDefaultPolicies(ss) {
     if (lastRow < 2) return defaults;
 
     const headers    = policySheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    const typeIdx    = headers.findIndex(function(h) { return String(h || '').trim() === 'POLICY_TYPE'; });
-    const nameIdx    = headers.findIndex(function(h) { return String(h || '').trim() === 'POLICY_NAME'; });
-    const defaultIdx = headers.findIndex(function(h) { return String(h || '').trim() === 'デフォルト'; });
+    // 日本語・英語両方のヘッダー名に対応
+    const typeIdx = headers.findIndex(function(h) {
+      const v = String(h || '').trim();
+      return v === 'POLICY_TYPE' || v === 'ポリシータイプ';
+    });
+    const nameIdx = headers.findIndex(function(h) {
+      const v = String(h || '').trim();
+      return v === 'POLICY_NAME' || v === 'ポリシー名';
+    });
+    const defaultIdx = headers.findIndex(function(h) {
+      const v = String(h || '').trim();
+      return v === 'デフォルト';
+    });
 
     if (typeIdx === -1 || nameIdx === -1 || defaultIdx === -1) {
-      Logger.log('⚠️ ポリシー管理シートに必要な列が見つかりません（POLICY_TYPE/POLICY_NAME/デフォルト）');
+      Logger.log('⚠️ ポリシー管理シートに必要な列が見つかりません' +
+        '（typeIdx=' + typeIdx + ' nameIdx=' + nameIdx + ' defaultIdx=' + defaultIdx + '）');
       return defaults;
     }
 
