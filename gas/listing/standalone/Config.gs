@@ -333,6 +333,21 @@ function extractSpreadsheetId(urlOrId) {
 }
 
 /**
+ * Google DriveフォルダURLまたはIDからフォルダIDを抽出
+ * 対応形式:
+ *   https://drive.google.com/drive/folders/FOLDER_ID
+ *   https://drive.google.com/drive/u/0/folders/FOLDER_ID
+ * @param {string} urlOrId
+ * @returns {string} フォルダID
+ */
+function extractDriveFolderId(urlOrId) {
+  if (!urlOrId) return '';
+  if (urlOrId.indexOf('/') === -1) return urlOrId; // すでにID
+  const match = urlOrId.match(/\/folders\/([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : '';
+}
+
+/**
  * eBay設定を取得
  *
  * @returns {Object} eBay設定
@@ -350,6 +365,7 @@ function getEbayConfig() {
     ruName: config['RuName'] || '',
     categoryMasterSpreadsheetId: extractSpreadsheetId(config['カテゴリマスタ']) || '',
     outputDbSpreadsheetId: extractSpreadsheetId(config['出品DB']) || '',
+    csvBackupFolderId:     extractDriveFolderId(config['CSVデータフォルダ']) || '',
     itemLocation: config['出品所在地'] || 'Japan',
     postalCode:   config['郵便番号']   || '',
 

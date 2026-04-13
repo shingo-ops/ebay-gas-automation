@@ -253,9 +253,21 @@ function buildCsvContent(csvSheet) {
 }
 
 /**
- * バックアップ用フォルダを取得または作成
+ * バックアップ用フォルダを取得
+ * ツール設定の「CSVデータフォルダ」URLからフォルダIDを取得して開く
+ * 未設定時はマイドライブ直下に「セルスタCSVバックアップ」フォルダを作成
  */
 function getOrCreateBackupFolder() {
+  const config   = getEbayConfig();
+  const folderId = config.csvBackupFolderId;
+  if (folderId) {
+    try {
+      return DriveApp.getFolderById(folderId);
+    } catch (e) {
+      Logger.log('⚠️ CSVデータフォルダが見つかりません（ID=' + folderId + '）。フォールバックフォルダを使用します。');
+    }
+  }
+  // フォールバック: フォルダ名で検索または作成
   const folderName = 'セルスタCSVバックアップ';
   const folders = DriveApp.getFoldersByName(folderName);
   if (folders.hasNext()) return folders.next();
