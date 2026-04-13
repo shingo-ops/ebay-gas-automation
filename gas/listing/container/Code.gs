@@ -36,6 +36,8 @@ function onOpen() {
     .addItem('出品者情報設定', 'menuSetupSellerInfo')
     .addItem('ポリシー取得', 'menuGetPolicies')
     .addItem('ポリシー更新', 'menuSyncPolicies')
+    .addSeparator()
+    .addItem('シート情報更新', 'menuSyncSheet')
     .addToUi();
 
   ui.createMenu('出品管理')
@@ -1243,4 +1245,61 @@ function menuExportSellstaCsv() {
 function menuClearSellstaCsvSheet() {
   const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
   EbayLib.clearSellstaCsvSheet(spreadsheetId);
+}
+
+/**
+ * 【⚙️】シート情報更新（双方向同期）
+ */
+function menuSyncSheet() {
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const ui = SpreadsheetApp.getUi();
+
+  const html = HtmlService.createHtmlOutput(
+    '<html><body style="font-family:sans-serif; padding:16px;">' +
+    '<p style="font-size:13px; font-weight:bold; margin-bottom:8px;">同期するシートを選択してください：</p>' +
+    '<select id="sheetName" style="width:100%; padding:6px; font-size:13px; margin-bottom:12px;">' +
+    EbayLib.getSyncTargetSheets().map(function(s) {
+      return '<option value="' + s + '">' + s + '</option>';
+    }).join('') +
+    '</select>' +
+    '<p style="font-size:13px; font-weight:bold; margin-bottom:8px;">同期の方向：</p>' +
+    '<label style="display:block; margin-bottom:6px;">' +
+    '  <input type="radio" name="direction" value="ss_to_db" checked>' +
+    '  出品スプレッドシート → 出品DB' +
+    '</label>' +
+    '<label style="display:block; margin-bottom:16px;">' +
+    '  <input type="radio" name="direction" value="db_to_ss">' +
+    '  出品DB → 出品スプレッドシート' +
+    '</label>' +
+    '<button onclick="execute()" style="padding:8px 20px; background:#1a73e8; color:#fff; border:none; border-radius:4px; font-size:13px; cursor:pointer;">同期実行</button>' +
+    '<button onclick="google.script.host.close()" style="margin-left:8px; padding:8px 20px; font-size:13px; cursor:pointer;">キャンセル</button>' +
+    '<script>' +
+    'function execute() {' +
+    '  const sheet = document.getElementById("sheetName").value;' +
+    '  const dir = document.querySelector("input[name=direction]:checked").value;' +
+    '  const label = dir === "ss_to_db" ? "出品スプレッドシート → 出品DB" : "出品DB → 出品スプレッドシート";' +
+    '  if (!confirm("「" + sheet + "」を\\n" + label + "\\nに上書きします。よろしいですか？")) return;' +
+    '  google.script.run' +
+    '    .withSuccessHandler(function(result) {' +
+    '      alert(result.success ? "✅ " + result.message : "❌ " + result.message);' +
+    '      google.script.host.close();' +
+    '    })' +
+    '    .withFailureHandler(function(err) {' +
+    '      alert("❌ エラー: " + err.message);' +
+    '    })' +
+    '    .menuSyncSheetExecute(sheet, dir);' +
+    '}' +
+    '</script>' +
+    '</body></html>'
+  ).setTitle('シート情報更新').setWidth(400).setHeight(280);
+
+  ui.showModalDialog(html, 'シート情報更新');
+}
+
+/**
+ * HTMLから呼び出される実行関数
+ */
+function menuSyncSheetExecute(sheetName, direction) {
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  return EbayLib.syncSheet(spreadsheetId, sheetName, direction);
 }
