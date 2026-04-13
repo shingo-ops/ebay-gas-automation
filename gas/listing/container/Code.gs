@@ -53,6 +53,7 @@ function onOpen() {
 
   ui.createMenu('その他')
     .addItem('管理年月プルダウン更新', 'menuUpdateKanriYmDropdown')
+    .addItem('報酬計算', 'menuCalculateReward')
     .addToUi();
 }
 
@@ -1324,6 +1325,29 @@ function menuUpdateKanriYmDropdown() {
   const ui = SpreadsheetApp.getUi();
   try {
     const result = EbayLib.updateKanriYmDropdown(spreadsheetId);
+    if (result.success) {
+      ui.alert('✅ 完了', result.message, ui.ButtonSet.OK);
+    } else {
+      ui.alert('❌ エラー', result.message, ui.ButtonSet.OK);
+    }
+  } catch(e) {
+    ui.alert('❌ エラー', e.toString(), ui.ButtonSet.OK);
+  }
+}
+
+function menuCalculateReward() {
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const ui = SpreadsheetApp.getUi();
+
+  const response = ui.alert(
+    '報酬計算',
+    '報酬管理シートのA2で選択中の管理年月で報酬計算を実行します。\n実行しますか？',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (response !== ui.Button.OK) return;
+
+  try {
+    const result = EbayLib.calculateReward(spreadsheetId);
     if (result.success) {
       ui.alert('✅ 完了', result.message, ui.ButtonSet.OK);
     } else {
