@@ -44,6 +44,10 @@ function onOpen() {
     .addItem('更新', 'menuReviseItem')
     .addItem('取り下げ', 'menuEndListing')
     .addToUi();
+
+  ui.createMenu('在庫管理')
+    .addItem('セルスタCSV出力', 'menuExportSellstaCsv')
+    .addToUi();
 }
 
 /**
@@ -1186,4 +1190,30 @@ function _writeSpecsToListingSheet(sheet, row, headerMapping, sortedSpecs, catDa
   }
 
   Logger.log('[_writeSpecsToListingSheet] 書き込み完了: ' + limit + '件');
+}
+
+/**
+ * 【在庫管理】セルスタCSV出力
+ */
+function menuExportSellstaCsv() {
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const ui = SpreadsheetApp.getUi();
+
+  const response = ui.alert(
+    'セルスタCSV出力',
+    '出品DBの全データを「セルスタCSV」シートに出力します。\n実行しますか？',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (response !== ui.Button.OK) return;
+
+  try {
+    const result = EbayLib.exportSellstaCsv(spreadsheetId);
+    if (result.success) {
+      ui.alert('✅ 出力完了', result.message, ui.ButtonSet.OK);
+    } else {
+      ui.alert('❌ エラー', result.message, ui.ButtonSet.OK);
+    }
+  } catch (e) {
+    ui.alert('❌ エラー', e.toString(), ui.ButtonSet.OK);
+  }
 }
