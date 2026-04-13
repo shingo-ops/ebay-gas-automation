@@ -55,7 +55,7 @@ function logToSheet(level, message, details) {
     } else if (level === 'INFO') {
       color = '#e8f5e9';
     }
-    sheet.getRange(lastRow, 1, 1, 4).setBackground(color);
+    sheet.getRange(lastRow, 1, 1, row.length).setBackground(color);
 
     // 古いログを削除（1000行以上の場合）
     if (sheet.getLastRow() > 1000) {
