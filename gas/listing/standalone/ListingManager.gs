@@ -1370,9 +1370,11 @@ function transferToOutputDb(spreadsheetId, rowNumber, listingData, result) {
     });
 
     // 出品DBの列構造に合わせて書き込み配列を生成（列名ベースのマッピング）
+    const skipCols = ['容積重量(g)', '適用重量(g)'];
     const outputRow = new Array(outputHeaderRow.length).fill('');
     outputHeaderRow.forEach(function(h, i) {
       if (!h) return;
+      if (skipCols.indexOf(h) !== -1) return;
       const srcIdx = sourceHeaderMapping[h];
       if (srcIdx) {
         const rawVal = sourceValues[srcIdx - 1];
