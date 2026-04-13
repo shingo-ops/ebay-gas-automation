@@ -690,6 +690,8 @@ function endFixedPriceItem(spreadsheetId, itemId) {
   try {
     if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
 
+    Logger.log('endFixedPriceItem 開始: itemId=' + itemId + ' (type=' + typeof itemId + ')');
+
     autoRefreshTokenIfNeeded(spreadsheetId);
     // autoRefreshTokenIfNeeded 内の finally で CURRENT_SPREADSHEET_ID がリセットされるため再セット
     if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
@@ -747,7 +749,13 @@ function endFixedPriceItem(spreadsheetId, itemId) {
       const shortMsg  = errElFPI
         ? (errElFPI.getChild('ShortMessage', ns) || { getText: function() { return ''; } }).getText()
         : '';
-      Logger.log('EndFixedPriceItem 失敗: ' + shortMsg + ' → EndItem にフォールバック');
+      const errCode   = errElFPI
+        ? (errElFPI.getChild('ErrorCode', ns) || { getText: function() { return ''; } }).getText()
+        : '';
+      const longMsg   = errElFPI
+        ? (errElFPI.getChild('LongMessage', ns) || { getText: function() { return ''; } }).getText()
+        : '';
+      Logger.log('EndFixedPriceItem 失敗: ErrorCode=' + errCode + ' ShortMessage=' + shortMsg + ' LongMessage=' + longMsg);
 
       if (shortMsg.indexOf('Input data is invalid') === -1 && shortMsg !== '') {
         // Input data is invalid 以外のエラーはフォールバックせずそのままエラーにする
@@ -793,10 +801,17 @@ function endFixedPriceItem(spreadsheetId, itemId) {
       return { success: true };
     }
 
-    const errElEI = rootEI.getChild('Errors', nsEI);
-    const errMsgEI = errElEI
+    const errElEI    = rootEI.getChild('Errors', nsEI);
+    const errCodeEI  = errElEI
+      ? (errElEI.getChild('ErrorCode', nsEI) || { getText: function() { return ''; } }).getText()
+      : '';
+    const errMsgEI   = errElEI
       ? (errElEI.getChild('ShortMessage', nsEI) || { getText: function() { return ''; } }).getText()
       : textEI;
+    const longMsgEI  = errElEI
+      ? (errElEI.getChild('LongMessage', nsEI) || { getText: function() { return ''; } }).getText()
+      : '';
+    Logger.log('EndItem 失敗: ErrorCode=' + errCodeEI + ' ShortMessage=' + errMsgEI + ' LongMessage=' + longMsgEI);
     throw new Error('EndItem APIエラー: ' + errMsgEI);
 
   } catch (e) {
