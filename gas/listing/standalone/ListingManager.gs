@@ -1927,7 +1927,11 @@ function debugHeaderMapping() {
  * Item IDが入っている最初の行（5行目以降）を自動検索して転記テストを実行する
  */
 function testTransferToOutputDb() {
-  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const spreadsheetId = PropertiesService.getScriptProperties().getProperty('DEFAULT_SPREADSHEET_ID');
+  if (!spreadsheetId) {
+    Logger.log('❌ スクリプトプロパティに DEFAULT_SPREADSHEET_ID が未設定です');
+    return;
+  }
 
   // 実際の出品シートからそのままデータを読む
   const sourceSheet = getTargetSpreadsheet(spreadsheetId).getSheetByName(SHEET_NAMES.LISTING);
