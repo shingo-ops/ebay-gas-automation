@@ -27,6 +27,99 @@ function getListingSheetHeaderMapping(spreadsheetId) {
 }
 
 /**
+ * Vero/禁止ワードシートとタイトルを照合してワード判定列に結果を書き込む
+ * 優先度: 禁止ワード > VERO > 該当なし
+ *
+ * @param {Sheet} sheet 出品シート
+ * @param {number} rowNumber 対象行番号
+ * @param {string} title タイトル文字列
+ * @param {Object} headerMapping ヘッダーマッピング {列名: 列番号(1-based)}
+ * @param {string} spreadsheetId スプレッドシートID
+ */
+function checkAndWriteWordJudgement(sheet, rowNumber, title, headerMapping, spreadsheetId) {
+  try {
+    if (!title || !title.trim()) return;
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+
+    // ワード判定列を特定
+    const wordCheckCol = headerMapping['ワード判定'];
+    if (!wordCheckCol) {
+      Logger.log('⚠️ ワード判定列が見つかりません');
+      return;
+    }
+
+    // Vero/禁止ワードシートを取得
+    const ss = getTargetSpreadsheet(spreadsheetId);
+    const veroSheet = ss.getSheetByName('Vero/禁止ワード');
+    if (!veroSheet) {
+      Logger.log('⚠️ Vero/禁止ワードシートが見つかりません');
+      return;
+    }
+
+    // ヘッダー行からVERO列・禁止ワード列を特定
+    const veroLastCol = veroSheet.getLastColumn();
+    const veroLastRow = veroSheet.getLastRow();
+    if (veroLastRow < 2) return;
+
+    const veroHeaders = veroSheet.getRange(1, 1, 1, veroLastCol).getValues()[0];
+    const veroColIdx = veroHeaders.findIndex(function(h) {
+      return String(h || '').trim() === 'VERO';
+    });
+    const kinshiColIdx = veroHeaders.findIndex(function(h) {
+      return String(h || '').trim() === '禁止ワード';
+    });
+
+    if (veroColIdx === -1 && kinshiColIdx === -1) {
+      Logger.log('⚠️ VERO列・禁止ワード列が見つかりません');
+      return;
+    }
+
+    // ワードリストを取得
+    const veroData = veroSheet.getRange(2, 1, veroLastRow - 1, veroLastCol).getValues();
+    const veroWords = [];
+    const kinshiWords = [];
+
+    veroData.forEach(function(row) {
+      if (veroColIdx !== -1) {
+        const w = String(row[veroColIdx] || '').trim();
+        if (w) veroWords.push(w);
+      }
+      if (kinshiColIdx !== -1) {
+        const w = String(row[kinshiColIdx] || '').trim();
+        if (w) kinshiWords.push(w);
+      }
+    });
+
+    // タイトルと照合（大文字小文字無視）
+    const titleLower = title.toLowerCase();
+
+    const hitKinshi = kinshiWords.filter(function(w) {
+      return titleLower.indexOf(w.toLowerCase()) !== -1;
+    });
+    const hitVero = veroWords.filter(function(w) {
+      return titleLower.indexOf(w.toLowerCase()) !== -1;
+    });
+
+    // 判定結果（禁止ワード優先）
+    let result = '該当なし';
+    if (hitKinshi.length > 0) {
+      result = '禁止: ' + hitKinshi.join(', ');
+    } else if (hitVero.length > 0) {
+      result = 'VERO: ' + hitVero.join(', ');
+    }
+
+    // ワード判定列に書き込む
+    sheet.getRange(rowNumber, wordCheckCol).setValue(result);
+    Logger.log('ワード判定: 行' + rowNumber + ' → ' + result);
+
+  } catch(e) {
+    Logger.log('⚠️ ワード判定エラー（処理継続）: ' + e.toString());
+  } finally {
+    CURRENT_SPREADSHEET_ID = null;
+  }
+}
+
+/**
  * ヘッダーマッピングから値を取得
  *
  * @param {Array} rowData 行データ配列
@@ -334,6 +427,11 @@ function readListingDataFromSheet(spreadsheetId, rowNumber) {
   }
 
   Logger.log('データ読み取り完了: SKU=' + data.sku);
+
+  // データ読み取り時にワード判定を実行
+  if (data.title) {
+    checkAndWriteWordJudgement(listingSheet, rowNumber, data.title, buildHeaderMapping(), spreadsheetId);
+  }
 
   return data;
 }
@@ -2369,6 +2467,10 @@ function processOnEdit(e, spreadsheetId) {
     sheet.getRange(row, charCountCol).setValue(charCount);
 
     Logger.log('✅ 文字数更新完了: 行' + row + ' = ' + charCount + '文字');
+
+    // ワード判定を実行
+    const titleForCheck = sheet.getRange(row, titleCol).getDisplayValue();
+    checkAndWriteWordJudgement(sheet, row, titleForCheck, buildHeaderMapping(), spreadsheetId);
 
   } catch (error) {
     Logger.log('❌ onEdit処理エラー: ' + error.toString());
