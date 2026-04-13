@@ -129,17 +129,24 @@ function updateTokenInSheet(accessToken, expiryDate) {
 
     const data = settingsSheet.getDataRange().getValues();
 
+    // ヘッダー行から「値」列を動的に特定
+    const headerRow = data[0];
+    const valueColIdx = headerRow.findIndex(function(h) { return String(h || '').trim() === '値'; });
+    if (valueColIdx === -1) {
+      throw new Error('ツール設定シートに「値」列が見つかりません。');
+    }
+
     // User Token行を探して更新
     for (let i = 0; i < data.length; i++) {
       const key = data[i][0];
 
       if (key === 'User Token') {
-        settingsSheet.getRange(i + 1, 2).setValue(accessToken);
+        settingsSheet.getRange(i + 1, valueColIdx + 1).setValue(accessToken);
         Logger.log('User Token更新: 行' + (i + 1));
       }
 
       if (key === 'Token Expiry') {
-        settingsSheet.getRange(i + 1, 2).setValue(expiryDate.toISOString());
+        settingsSheet.getRange(i + 1, valueColIdx + 1).setValue(expiryDate.toISOString());
         Logger.log('Token Expiry更新（ISO 8601形式）: 行' + (i + 1) + ' = ' + expiryDate.toISOString());
       }
     }

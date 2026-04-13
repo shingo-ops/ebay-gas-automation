@@ -133,6 +133,13 @@ function saveTokensToSheet(accessToken, refreshToken, expiresIn, refreshTokenExp
   const settingsSheet = getTargetSpreadsheet().getSheetByName(SHEET_NAMES.SETTINGS);
   const data = settingsSheet.getDataRange().getValues();
 
+  // ヘッダー行から「値」列を動的に特定
+  const headerRow = data[0];
+  const valueColIdx = headerRow.findIndex(function(h) { return String(h || '').trim() === '値'; });
+  if (valueColIdx === -1) {
+    throw new Error('ツール設定シートに「値」列が見つかりません。');
+  }
+
   // Access Token有効期限
   const accessExpiryDate = new Date();
   accessExpiryDate.setSeconds(accessExpiryDate.getSeconds() + expiresIn);
@@ -147,16 +154,16 @@ function saveTokensToSheet(accessToken, refreshToken, expiresIn, refreshTokenExp
     const key = data[i][0];
 
     if (key === 'User Token') {
-      settingsSheet.getRange(i + 1, 2).setValue(accessToken);
+      settingsSheet.getRange(i + 1, valueColIdx + 1).setValue(accessToken);
     }
     if (key === 'Refresh Token') {
-      settingsSheet.getRange(i + 1, 2).setValue(refreshToken);
+      settingsSheet.getRange(i + 1, valueColIdx + 1).setValue(refreshToken);
     }
     if (key === 'Token Expiry') {
-      settingsSheet.getRange(i + 1, 2).setValue(accessExpiryDate.toISOString());
+      settingsSheet.getRange(i + 1, valueColIdx + 1).setValue(accessExpiryDate.toISOString());
     }
     if (key === 'Refresh Token Expiry' && refreshTokenExpiresIn) {
-      settingsSheet.getRange(i + 1, 2).setValue(refreshExpiryDate.toISOString());
+      settingsSheet.getRange(i + 1, valueColIdx + 1).setValue(refreshExpiryDate.toISOString());
       Logger.log('Refresh Token Expiry: ' + refreshExpiryDate.toISOString() + '（' +
                  refreshExpiryDate.toLocaleString('ja-JP') + '）');
     }

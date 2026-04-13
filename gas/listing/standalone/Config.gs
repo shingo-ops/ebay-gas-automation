@@ -261,15 +261,22 @@ function getConfig() {
     throw new Error(`「${SHEET_NAMES.SETTINGS}」シートが見つかりません`);
   }
 
-  // A列:項目名、B列:値
   const data = settingsSheet.getDataRange().getValues();
+
+  // ヘッダー行から「項目」列・「値」列を動的に特定
+  const headerRow = data[0];
+  const itemColIdx = headerRow.findIndex(function(h) { return String(h || '').trim() === '項目'; });
+  const valueColIdx = headerRow.findIndex(function(h) { return String(h || '').trim() === '値'; });
+  if (itemColIdx === -1 || valueColIdx === -1) {
+    throw new Error('ツール設定シートに「項目」または「値」列が見つかりません。');
+  }
 
   const config = {};
 
   // 1行目から開始（0-indexed）
   for (let i = 0; i < data.length; i++) {
-    const key = data[i][0];   // A列: 項目名
-    const value = data[i][1]; // B列: 値
+    const key = data[i][itemColIdx];   // 「項目」列
+    const value = data[i][valueColIdx]; // 「値」列
 
     // ヘッダー行・セクションヘッダーをスキップ
     if (key === '項目' || key === 'Item' || key === 'Key' ||
