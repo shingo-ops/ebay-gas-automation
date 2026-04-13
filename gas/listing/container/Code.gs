@@ -1281,11 +1281,22 @@ function menuSyncSheet() {
     '  if (!confirm("「" + sheet + "」を\\n" + label + "\\nに上書きします。よろしいですか？")) return;' +
     '  google.script.run' +
     '    .withSuccessHandler(function(result) {' +
-    '      alert(result.success ? "✅ " + result.message : "❌ " + result.message);' +
-    '      google.script.host.close();' +
+    '      const icon = result.success ? "✅" : "❌";' +
+    '      const msg  = result.message.replace(/\\n/g, "<br>");' +
+    '      document.body.innerHTML =' +
+    '        "<div style=\\"display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:24px; box-sizing:border-box; text-align:center;\\">" +' +
+    '        "<p style=\\"font-size:22px; margin:0 0 12px;\\">" + icon + "</p>" +' +
+    '        "<p style=\\"font-size:13px; line-height:1.6; margin:0 0 20px;\\">" + msg + "</p>" +' +
+    '        "<button onclick=\\"google.script.host.close()\\" style=\\"padding:8px 24px; background:#1a73e8; color:#fff; border:none; border-radius:4px; font-size:13px; cursor:pointer;\\">閉じる</button>" +' +
+    '        "</div>";' +
     '    })' +
     '    .withFailureHandler(function(err) {' +
-    '      alert("❌ エラー: " + err.message);' +
+    '      document.body.innerHTML =' +
+    '        "<div style=\\"display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:24px; box-sizing:border-box; text-align:center;\\">" +' +
+    '        "<p style=\\"font-size:22px; margin:0 0 12px;\\">❌</p>" +' +
+    '        "<p style=\\"font-size:13px; line-height:1.6; margin:0 0 20px;\\">エラー: " + err.message + "</p>" +' +
+    '        "<button onclick=\\"google.script.host.close()\\" style=\\"padding:8px 24px; background:#1a73e8; color:#fff; border:none; border-radius:4px; font-size:13px; cursor:pointer;\\">閉じる</button>" +' +
+    '        "</div>";' +
     '    })' +
     '    .menuSyncSheetExecute(sheet, dir);' +
     '}' +
