@@ -216,7 +216,8 @@ function extractImageUrls(rowData, headerMapping) {
     const url = getValueByHeader(rowData, headerMapping, imageHeader);
 
     if (url && String(url).trim() !== '') {
-      urls.push(convertImageUrl(String(url).trim()));
+      const convertedUrl = convertDriveUrlForEbay(String(url).trim()) || String(url).trim();
+      urls.push(convertedUrl);
     }
   }
 
@@ -226,7 +227,8 @@ function extractImageUrls(rowData, headerMapping) {
   const storeImageUrl = getValueByHeader(rowData, headerMapping, 'ストア画像');
 
   if (storeImageUrl && String(storeImageUrl).trim() !== '') {
-    urls.push(convertImageUrl(String(storeImageUrl).trim()));
+    const convertedUrl = convertDriveUrlForEbay(String(storeImageUrl).trim()) || String(storeImageUrl).trim();
+    urls.push(convertedUrl);
     Logger.log('✅ ストア画像を' + urls.length + '枚目に追加: ' + String(storeImageUrl).substring(0, 50) + '...');
   } else {
     Logger.log('⚠️ ストア画像が設定されていません');
@@ -235,34 +237,6 @@ function extractImageUrls(rowData, headerMapping) {
   Logger.log('最終画像数: ' + urls.length + '枚（商品画像 + ストア画像）');
 
   return urls;
-}
-
-/**
- * Google Drive の共有URLをeBayがアクセス可能な直接表示URLに変換する
- * @param {string} url 画像URL
- * @returns {string} 変換後のURL
- */
-function convertImageUrl(url) {
-  if (!url || typeof url !== 'string') return url;
-  url = url.trim();
-
-  // https://drive.google.com/file/d/FILEID/view... → 直接表示URL
-  const driveFileMatch = url.match(/drive\.google\.com\/file\/d\/([^\/\?]+)/);
-  if (driveFileMatch) {
-    const converted = 'https://drive.google.com/uc?export=view&id=' + driveFileMatch[1];
-    Logger.log('画像URL変換: ' + url + ' → ' + converted);
-    return converted;
-  }
-
-  // https://drive.google.com/open?id=FILEID → 直接表示URL
-  const driveOpenMatch = url.match(/drive\.google\.com\/open\?id=([^&]+)/);
-  if (driveOpenMatch) {
-    const converted = 'https://drive.google.com/uc?export=view&id=' + driveOpenMatch[1];
-    Logger.log('画像URL変換: ' + url + ' → ' + converted);
-    return converted;
-  }
-
-  return url;
 }
 
 /**
@@ -2030,6 +2004,26 @@ function createListing(spreadsheetId, rowNumber) {
     } else {
       Logger.log('⚠️ 出品DBが未設定のため転記をスキップします');
     }
+
+    // Phase1.5: 画像をEPSにアップロード
+    const config2 = getEbayConfig();
+    const accessToken = config2.userToken;
+    if (listingData.images && listingData.images.length > 0) {
+      Logger.log('=== 画像EPSアップロード開始: ' + listingData.images.length + '枚 ===');
+      const epsImages = uploadAllImagesToEPS(listingData.images, accessToken);
+      if (epsImages.length === 0) {
+        // 全画像のアップロード失敗 → DB行をロールバックして終了
+        if (dbRow && outputDbId) deleteDbRow(outputDbId, dbRow, listingData.sku);
+        return {
+          success: false,
+          message: '❌ 全ての画像のEPSアップロードに失敗しました。\nDrive共有設定を確認してください。'
+        };
+      }
+      listingData.images = epsImages;
+      Logger.log('✅ 画像EPSアップロード完了: ' + epsImages.length + '枚');
+    }
+    // CURRENT_SPREADSHEET_IDを再セット
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
 
     // Phase2: eBay出品
     let result;

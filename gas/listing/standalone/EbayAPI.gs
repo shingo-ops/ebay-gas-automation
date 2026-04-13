@@ -318,3 +318,149 @@ function testApiConnection() {
     Logger.log('エラー: ' + error.toString());
   }
 }
+
+/**
+ * Google Drive URLをeBayがダウンロード可能な形式に変換する
+ * lh3.googleusercontent.com/d/{FILEID} 形式を使用
+ *
+ * @param {string} url Google Drive URL
+ * @returns {string|null} 変換後URL、変換失敗時null
+ */
+function convertDriveUrlForEbay(url) {
+  if (!url || typeof url !== 'string') return null;
+  url = url.trim();
+
+  // https://drive.google.com/file/d/FILEID/view... 形式
+  const driveFileMatch = url.match(/drive\.google\.com\/file\/d\/([^\/\?]+)/);
+  if (driveFileMatch) {
+    const fileId = driveFileMatch[1];
+    // lh3.googleusercontent.com形式はeBayが直接アクセス可能
+    return 'https://lh3.googleusercontent.com/d/' + fileId;
+  }
+
+  // https://drive.google.com/open?id=FILEID 形式
+  const driveOpenMatch = url.match(/drive\.google\.com\/open\?id=([^&]+)/);
+  if (driveOpenMatch) {
+    return 'https://lh3.googleusercontent.com/d/' + driveOpenMatch[1];
+  }
+
+  // すでにlh3形式
+  if (url.includes('lh3.googleusercontent.com')) {
+    return url;
+  }
+
+  // HTTPS URLはそのまま返す
+  if (url.startsWith('https://')) {
+    return url;
+  }
+
+  Logger.log('⚠️ 変換不可のURL形式: ' + url);
+  return null;
+}
+
+/**
+ * Google DriveのURLをeBay EPSにアップロードしてEPS URLを返す
+ * eBay Media API createImageFromUrl を使用
+ *
+ * @param {string} driveUrl Google Drive共有URL
+ * @param {string} accessToken eBay OAuthアクセストークン
+ * @returns {{ success: boolean, epsUrl: string, error: string }}
+ */
+function uploadImageToEPS(driveUrl, accessToken) {
+  try {
+    // Google Drive URLをlh3.googleusercontent.com形式に変換
+    const imageUrl = convertDriveUrlForEbay(driveUrl);
+    if (!imageUrl) {
+      return { success: false, error: 'Google Drive URLの変換に失敗しました: ' + driveUrl };
+    }
+
+    Logger.log('EPS アップロード開始: ' + imageUrl);
+
+    const endpoint = 'https://apim.ebay.com/commerce/media/v1_beta/image/create_image_from_url';
+
+    const payload = JSON.stringify({ imageUrl: imageUrl });
+
+    const options = {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + accessToken,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      payload: payload,
+      muteHttpExceptions: true
+    };
+
+    const response = UrlFetchApp.fetch(endpoint, options);
+    const statusCode = response.getResponseCode();
+
+    Logger.log('EPS アップロード レスポンスコード: ' + statusCode);
+
+    if (statusCode === 201) {
+      // レスポンスボディからimageUrlを取得
+      const body = JSON.parse(response.getContentText());
+      const epsUrl = body.imageUrl;
+      Logger.log('✅ EPS アップロード成功: ' + epsUrl);
+      return { success: true, epsUrl: epsUrl };
+    }
+
+    // エラー処理
+    const errorBody = response.getContentText();
+    Logger.log('❌ EPS アップロード失敗: ' + statusCode + ' / ' + errorBody);
+
+    let errorMessage = 'HTTP ' + statusCode;
+    try {
+      const errorJson = JSON.parse(errorBody);
+      if (errorJson.errors && errorJson.errors.length > 0) {
+        errorMessage = errorJson.errors[0].longMessage || errorJson.errors[0].message || errorMessage;
+      }
+    } catch (e) {
+      errorMessage += ': ' + errorBody.substring(0, 200);
+    }
+
+    return { success: false, error: errorMessage };
+
+  } catch (e) {
+    Logger.log('❌ EPS アップロード例外: ' + e.toString());
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * 出品データの全画像をEPSにアップロードしてEPS URLに置換する
+ *
+ * @param {Array} images 画像URLの配列
+ * @param {string} accessToken eBay OAuthアクセストークン
+ * @returns {Array} EPS URLの配列（失敗した画像はスキップ）
+ */
+function uploadAllImagesToEPS(images, accessToken) {
+  const epsUrls = [];
+
+  for (let i = 0; i < images.length; i++) {
+    const originalUrl = images[i];
+    if (!originalUrl) continue;
+
+    // Drive URL以外（すでにEPS URLや他のHTTPS URL）はそのまま使用
+    if (originalUrl.includes('i.ebayimg.com')) {
+      Logger.log('既存EPS URL スキップ: ' + originalUrl);
+      epsUrls.push(originalUrl);
+      continue;
+    }
+
+    const result = uploadImageToEPS(originalUrl, accessToken);
+    if (result.success) {
+      epsUrls.push(result.epsUrl);
+    } else {
+      Logger.log('⚠️ 画像' + (i + 1) + 'のEPSアップロード失敗: ' + result.error);
+      // 失敗した画像はスキップ（出品は継続）
+    }
+
+    // レート制限対策: 5秒間50リクエスト制限のため間隔を空ける
+    if (i < images.length - 1) {
+      Utilities.sleep(200); // 200ms間隔
+    }
+  }
+
+  Logger.log('EPS アップロード完了: ' + epsUrls.length + '枚成功');
+  return epsUrls;
+}
