@@ -50,6 +50,10 @@ function onOpen() {
   ui.createMenu('在庫管理')
     .addItem('セルスタCSV出力', 'menuExportSellstaCsv')
     .addToUi();
+
+  ui.createMenu('その他')
+    .addItem('管理年月プルダウン更新', 'menuUpdateKanriYmDropdown')
+    .addToUi();
 }
 
 /**
@@ -1313,4 +1317,19 @@ function menuSyncSheet() {
 function menuSyncSheetExecute(sheetName, direction) {
   const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
   return EbayLib.syncSheet(spreadsheetId, sheetName, direction);
+}
+
+function menuUpdateKanriYmDropdown() {
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const result = EbayLib.updateKanriYmDropdown(spreadsheetId);
+    if (result.success) {
+      ui.alert('✅ 完了', result.message, ui.ButtonSet.OK);
+    } else {
+      ui.alert('❌ エラー', result.message, ui.ButtonSet.OK);
+    }
+  } catch(e) {
+    ui.alert('❌ エラー', e.toString(), ui.ButtonSet.OK);
+  }
 }

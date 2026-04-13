@@ -109,3 +109,99 @@ function syncSheet(spreadsheetId, sheetName, direction) {
 function getSyncTargetSheets() {
   return SYNC_TARGET_SHEETS;
 }
+
+/**
+ * 出品DBの管理年月列から一意の値を取得してプルダウンを設定
+ * @param {string} spreadsheetId 出品スプレッドシートID
+ * @returns {{ success: boolean, message: string }}
+ */
+function updateKanriYmDropdown(spreadsheetId) {
+  try {
+    Logger.log('=== 管理年月プルダウン更新開始 ===');
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+
+    // 出品DBを開く
+    const config = getEbayConfig();
+    const outputDbId = config.outputDbSpreadsheetId;
+    if (!outputDbId) {
+      return { success: false, message: '出品DBが設定されていません。' };
+    }
+    const outputSS = SpreadsheetApp.openById(outputDbId);
+
+    // 出品DBの「出品」シートから管理年月を取得
+    const outputSheet = outputSS.getSheetByName('出品');
+    if (!outputSheet) {
+      return { success: false, message: '出品DBに「出品」シートが見つかりません。' };
+    }
+
+    const lastRow = outputSheet.getLastRow();
+    const lastCol = outputSheet.getLastColumn();
+    const headerRow = outputSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const headerMap = {};
+    headerRow.forEach(function(h, i) { if (h) headerMap[String(h).trim()] = i; });
+
+    const ymIdx = headerMap['管理年月'];
+    if (ymIdx === undefined) {
+      return { success: false, message: '出品DBに「管理年月」列が見つかりません。' };
+    }
+
+    // 2行目以降から管理年月を取得して一意化・降順ソート
+    const ymSet = {};
+    if (lastRow >= 2) {
+      const ymValues = outputSheet.getRange(2, ymIdx + 1, lastRow - 1, 1).getValues();
+      ymValues.forEach(function(row) {
+        const val = String(row[0] || '').trim();
+        if (val && val !== '') ymSet[val] = true;
+      });
+    }
+
+    const ymList = Object.keys(ymSet).sort(function(a, b) {
+      return parseInt(b) - parseInt(a); // 降順（新しい年月が上）
+    });
+
+    if (ymList.length === 0) {
+      return { success: false, message: '管理年月のデータが見つかりません。' };
+    }
+
+    Logger.log('管理年月リスト: ' + ymList.join(', '));
+
+    // 出品DBの「報酬管理」シートを取得または作成
+    let kanriSheet = outputSS.getSheetByName('報酬管理');
+    if (!kanriSheet) {
+      kanriSheet = outputSS.insertSheet('報酬管理');
+      Logger.log('✅ 「報酬管理」シートを新規作成しました');
+    }
+
+    // A1にヘッダーがなければ設定
+    if (!kanriSheet.getRange('A1').getValue()) {
+      kanriSheet.getRange('A1').setValue('管理年月');
+      kanriSheet.getRange('A1').setFontWeight('bold').setBackground('#D5E8F0');
+    }
+
+    // A2にプルダウンを設定
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(ymList, true)
+      .setAllowInvalid(false)
+      .build();
+    kanriSheet.getRange('A2').setDataValidation(rule);
+
+    // 現在値が未設定なら最新年月をデフォルト設定
+    const currentVal = kanriSheet.getRange('A2').getValue();
+    if (!currentVal) {
+      kanriSheet.getRange('A2').setValue(ymList[0]);
+    }
+
+    Logger.log('✅ 管理年月プルダウン更新完了: ' + ymList.length + '件');
+
+    return {
+      success: true,
+      message: '管理年月プルダウンを更新しました。\n' + ymList.length + '件: ' + ymList.join(', ')
+    };
+
+  } catch(e) {
+    Logger.log('❌ 管理年月プルダウン更新エラー: ' + e.toString());
+    return { success: false, message: 'エラー: ' + e.toString() };
+  } finally {
+    CURRENT_SPREADSHEET_ID = null;
+  }
+}
