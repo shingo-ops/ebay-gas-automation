@@ -1549,31 +1549,57 @@ function transferToOutputDb_phase1(spreadsheetId, rowNumber, listingData, output
       }
     });
 
-    // 書き込み行を特定（出品URL列の最終データ行の次）
+    // --- SKU予約：空行を探してSKUだけ先に書き込む ---
+    const skuColInOutput = outputHeaderRow.indexOf('SKU');
     const urlColInOutput = outputHeaderRow.indexOf('出品URL');
     let newRow = null;
-    if (urlColInOutput !== -1) {
+
+    // 既存行にSKUが一致する行があれば再利用（冪等性確保）
+    if (skuColInOutput !== -1 && listingData.sku) {
       const lastRow = outputSheet.getLastRow();
-      const colValues = lastRow >= 5
-        ? outputSheet.getRange(5, urlColInOutput + 1, lastRow - 4, 1).getValues()
-        : [];
-      // 5行目以降で出品URLが空の行を先頭から探す（ロールバック後の空行を再利用）
-      for (let i = 0; i < colValues.length; i++) {
-        if (colValues[i][0] === '') {
-          newRow = i + 5;
-          break;
+      if (lastRow >= 5) {
+        const skuValues = outputSheet.getRange(5, skuColInOutput + 1, lastRow - 4, 1).getValues();
+        for (let i = 0; i < skuValues.length; i++) {
+          if (String(skuValues[i][0]).trim() === String(listingData.sku).trim()) {
+            newRow = i + 5;
+            Logger.log('既存SKU行を再利用: ' + newRow + '行目 / SKU: ' + listingData.sku);
+            break;
+          }
         }
       }
-      // 空行が見つからなければ最終行の次
-      if (!newRow) newRow = Math.max(lastRow + 1, 5);
-    } else {
-      newRow = Math.max(outputSheet.getLastRow() + 1, 5);
     }
 
-    outputSheet.getRange(newRow, 1, 1, outputRow.length).setValues([outputRow]);
-    Logger.log('✅ 出品DB Phase1転記完了: ' + newRow + '行目');
+    // SKU一致行がなければ空行を探す（出品URL列が空の行）
+    if (!newRow) {
+      const lastRow = outputSheet.getLastRow();
+      if (urlColInOutput !== -1 && lastRow >= 5) {
+        const urlValues = outputSheet.getRange(5, urlColInOutput + 1, lastRow - 4, 1).getValues();
+        for (let i = 0; i < urlValues.length; i++) {
+          if (urlValues[i][0] === '') {
+            newRow = i + 5;
+            Logger.log('空行を再利用: ' + newRow + '行目');
+            break;
+          }
+        }
+      }
+      // 空行もなければ最終行の次
+      if (!newRow) newRow = Math.max(outputSheet.getLastRow() + 1, 5);
+    }
 
-    return { success: true, dbRow: newRow };
+    // SKUだけ先に予約書き込み（他のデータは後でsetValuesで上書き）
+    if (skuColInOutput !== -1 && listingData.sku) {
+      outputSheet.getRange(newRow, skuColInOutput + 1).setValue(listingData.sku);
+      Logger.log('SKU予約完了: ' + newRow + '行目 / SKU: ' + listingData.sku);
+    }
+
+    // outputRowにSKUをセット（setValuesで上書きされても同じ値）
+    outputRow[skuColInOutput] = listingData.sku;
+
+    // 書き込み実行
+    outputSheet.getRange(newRow, 1, 1, outputRow.length).setValues([outputRow]);
+    Logger.log('✅ 出品DB Phase1転記完了: ' + newRow + '行目 / SKU: ' + listingData.sku);
+
+    return { success: true, dbRow: newRow, sku: listingData.sku };
 
   } catch (error) {
     Logger.log('❌ 出品DB Phase1転記エラー: ' + error.toString());
@@ -1591,7 +1617,7 @@ function transferToOutputDb_phase1(spreadsheetId, rowNumber, listingData, output
  * @param {string} itemId eBay Item ID
  * @returns {{ success: boolean, error?: string }}
  */
-function transferToOutputDb_phase2(outputDbId, dbRow, itemId) {
+function transferToOutputDb_phase2(outputDbId, dbRow, itemId, sku) {
   try {
     Logger.log('=== 出品DB転記 Phase2開始 ===');
 
@@ -1605,6 +1631,25 @@ function transferToOutputDb_phase2(outputDbId, dbRow, itemId) {
     const outputHeaderRow = outputHeaderRowRaw.map(function(h) { return String(h || '').trim(); });
     const outputColMap = {};
     outputHeaderRow.forEach(function(h, i) { if (h) outputColMap[h] = i; });
+
+    // SKUで行を再検索（行番号ずれに備えて）
+    if (sku) {
+      const lastRow = outputSheet.getLastRow();
+      const skuColInOutput = outputHeaderRow.indexOf('SKU');
+      if (skuColInOutput !== -1 && lastRow >= 5) {
+        const skuValues = outputSheet.getRange(5, skuColInOutput + 1, lastRow - 4, 1).getValues();
+        for (let i = 0; i < skuValues.length; i++) {
+          if (String(skuValues[i][0]).trim() === String(sku).trim()) {
+            const foundRow = i + 5;
+            if (foundRow !== dbRow) {
+              Logger.log('⚠️ SKU検索で行番号を補正: ' + dbRow + ' → ' + foundRow);
+              dbRow = foundRow;
+            }
+            break;
+          }
+        }
+      }
+    }
 
     const now = new Date();
     const year   = now.getFullYear();
@@ -1650,7 +1695,7 @@ function transferToOutputDb_phase2(outputDbId, dbRow, itemId) {
  * @param {number} dbRow 削除対象行番号
  * @returns {{ success: boolean, error?: string }}
  */
-function deleteDbRow(outputDbId, dbRow) {
+function deleteDbRow(outputDbId, dbRow, sku) {
   try {
     Logger.log('=== 出品DB行クリア: ' + dbRow + '行目 ===');
     const outputSpreadsheet = SpreadsheetApp.openById(outputDbId);
@@ -1660,6 +1705,23 @@ function deleteDbRow(outputDbId, dbRow) {
     }
 
     const lastCol = outputSheet.getLastColumn();
+
+    // SKUで行を再検索
+    if (sku) {
+      const headerRow = outputSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      const skuCol = headerRow.findIndex(function(h) {
+        return String(h).trim() === 'SKU';
+      });
+      if (skuCol !== -1 && outputSheet.getLastRow() >= 5) {
+        const skuValues = outputSheet.getRange(5, skuCol + 1, outputSheet.getLastRow() - 4, 1).getValues();
+        for (let i = 0; i < skuValues.length; i++) {
+          if (String(skuValues[i][0]).trim() === String(sku).trim()) {
+            dbRow = i + 5;
+            break;
+          }
+        }
+      }
+    }
 
     // 内容のみクリア（書式・プルダウンは維持）
     outputSheet.getRange(dbRow, 1, 1, lastCol).clearContent();
@@ -2010,7 +2072,7 @@ function createListing(spreadsheetId, rowNumber) {
     } catch (ebayError) {
       // 出品失敗 → Phase1で作成したDB行を削除してロールバック
       if (dbRow && outputDbId) {
-        deleteDbRow(outputDbId, dbRow);
+        deleteDbRow(outputDbId, dbRow, listingData.sku);
         Logger.log('⚠️ 出品失敗のためDB転記データを削除しました');
       }
       return {
@@ -2033,7 +2095,7 @@ function createListing(spreadsheetId, rowNumber) {
 
     // Phase4: DB側に特殊フィールドを更新（Item ID・URL・ステータス等）
     if (dbRow && outputDbId) {
-      const phase2Result = transferToOutputDb_phase2(outputDbId, dbRow, result.itemId);
+      const phase2Result = transferToOutputDb_phase2(outputDbId, dbRow, result.itemId, listingData.sku);
       if (!phase2Result.success) {
         // DB更新失敗 → 出品シートに書き戻してユーザーに通知
         writeBackToListingSheet(spreadsheetId, rowNumber, result.itemId);
