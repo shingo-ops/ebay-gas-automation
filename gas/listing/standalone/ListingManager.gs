@@ -1490,6 +1490,221 @@ function transferToOutputDb(spreadsheetId, rowNumber, listingData, result) {
 }
 
 /**
+ * 出品DB転記 Phase1: 商品データのみ転記（特殊フィールドは空欄）
+ * 出品前に実行し、書き込み行番号を返す
+ *
+ * @param {string} spreadsheetId 出品スプレッドシートID
+ * @param {number} rowNumber 出品行番号
+ * @param {Object} listingData 出品データ
+ * @param {string} outputDbId 出品DBスプレッドシートID
+ * @returns {{ success: boolean, dbRow?: number, error?: string }}
+ */
+function transferToOutputDb_phase1(spreadsheetId, rowNumber, listingData, outputDbId) {
+  try {
+    Logger.log('=== 出品DB転記 Phase1開始 ===');
+
+    if (!outputDbId || outputDbId === '') {
+      return { success: false, error: '「ツール設定」シートの「出品DB」にスプレッドシートURLが設定されていません。' };
+    }
+
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+
+    const outputSpreadsheet = SpreadsheetApp.openById(outputDbId);
+    let outputSheet = outputSpreadsheet.getSheetByName('出品');
+    if (!outputSheet) {
+      outputSheet = outputSpreadsheet.insertSheet('出品');
+      Logger.log('✅ "出品"シートを作成しました');
+    }
+
+    // ヘッダー行が存在しない場合はコピー
+    if (outputSheet.getLastRow() < 1) {
+      const sourceSheet = getTargetSpreadsheet(spreadsheetId).getSheetByName(SHEET_NAMES.LISTING);
+      const sourceHeaders = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues();
+      outputSheet.getRange(1, 1, 1, sourceHeaders[0].length).setValues(sourceHeaders);
+      Logger.log('✅ ヘッダー行をコピーしました');
+    }
+
+    const sourceSheet = getTargetSpreadsheet(spreadsheetId).getSheetByName(SHEET_NAMES.LISTING);
+    const srcLastCol = sourceSheet.getLastColumn();
+    const sourceValues = sourceSheet.getRange(rowNumber, 1, 1, srcLastCol).getValues()[0];
+    const sourceDisplayValues = sourceSheet.getRange(rowNumber, 1, 1, srcLastCol).getDisplayValues()[0];
+    const sourceHeaderMapping = buildHeaderMapping();
+
+    const outputHeaderRowRaw = outputSheet.getRange(1, 1, 1, outputSheet.getLastColumn()).getValues()[0];
+    const outputHeaderRow = outputHeaderRowRaw.map(function(h) { return String(h || '').trim(); });
+    const outputColMap = {};
+    outputHeaderRow.forEach(function(h, i) { if (h) outputColMap[h] = i; });
+
+    const specialFields = ['Item ID', '出品URL', '出品ステータス', 'ステータス', '出品タイムスタンプ', '管理年月'];
+    const skipCols = ['容積重量(g)', '適用重量(g)'];
+    const outputRow = new Array(outputHeaderRow.length).fill('');
+    outputHeaderRow.forEach(function(h, i) {
+      if (!h) return;
+      if (skipCols.indexOf(h) !== -1) return;
+      if (specialFields.indexOf(h) !== -1) return; // Phase2で書き込む
+      const srcIdx = sourceHeaderMapping[h];
+      if (srcIdx) {
+        const rawVal = sourceValues[srcIdx - 1];
+        outputRow[i] = (rawVal instanceof Date) ? sourceDisplayValues[srcIdx - 1] : rawVal;
+      }
+    });
+
+    // 書き込み行を特定（出品URL列の最終データ行の次）
+    const urlColInOutput = outputHeaderRow.indexOf('出品URL');
+    let newRow = 5;
+    if (urlColInOutput !== -1) {
+      const colValues = outputSheet.getRange(1, urlColInOutput + 1, outputSheet.getLastRow(), 1).getValues();
+      for (let i = colValues.length - 1; i >= 0; i--) {
+        if (colValues[i][0] !== '') { newRow = i + 2; break; }
+      }
+      if (newRow < 5) newRow = 5;
+    } else {
+      newRow = outputSheet.getLastRow() + 1;
+    }
+
+    outputSheet.getRange(newRow, 1, 1, outputRow.length).setValues([outputRow]);
+    Logger.log('✅ 出品DB Phase1転記完了: ' + newRow + '行目');
+
+    return { success: true, dbRow: newRow };
+
+  } catch (error) {
+    Logger.log('❌ 出品DB Phase1転記エラー: ' + error.toString());
+    return { success: false, error: error.toString() };
+  } finally {
+    CURRENT_SPREADSHEET_ID = null;
+  }
+}
+
+/**
+ * 出品DB転記 Phase2: 特殊フィールドのみ更新（Item ID・URL・ステータス等）
+ *
+ * @param {string} outputDbId 出品DBスプレッドシートID
+ * @param {number} dbRow 更新対象行番号
+ * @param {string} itemId eBay Item ID
+ * @returns {{ success: boolean, error?: string }}
+ */
+function transferToOutputDb_phase2(outputDbId, dbRow, itemId) {
+  try {
+    Logger.log('=== 出品DB転記 Phase2開始 ===');
+
+    const outputSpreadsheet = SpreadsheetApp.openById(outputDbId);
+    const outputSheet = outputSpreadsheet.getSheetByName('出品');
+    if (!outputSheet) {
+      return { success: false, error: '出品DBに「出品」シートが見つかりません' };
+    }
+
+    const outputHeaderRowRaw = outputSheet.getRange(1, 1, 1, outputSheet.getLastColumn()).getValues()[0];
+    const outputHeaderRow = outputHeaderRowRaw.map(function(h) { return String(h || '').trim(); });
+    const outputColMap = {};
+    outputHeaderRow.forEach(function(h, i) { if (h) outputColMap[h] = i; });
+
+    const now = new Date();
+    const year   = now.getFullYear();
+    const month  = String(now.getMonth() + 1).padStart(2, '0');
+    const day    = String(now.getDate()).padStart(2, '0');
+    const hour   = String(now.getHours()).padStart(2, '0');
+    const minute = String(now.getMinutes()).padStart(2, '0');
+    const second = String(now.getSeconds()).padStart(2, '0');
+    const timestamp       = year + '/' + month + '/' + day + '/' + hour + ':' + minute + ':' + second;
+    const managementMonth = parseInt(year + month);
+    const listingUrl      = 'https://www.ebay.com/itm/' + itemId;
+
+    if ('Item ID' in outputColMap) {
+      outputSheet.getRange(dbRow, outputColMap['Item ID'] + 1).setValue(itemId);
+    }
+    if ('出品URL' in outputColMap) {
+      outputSheet.getRange(dbRow, outputColMap['出品URL'] + 1).setValue(listingUrl);
+    }
+    const statusKey = ('出品ステータス' in outputColMap) ? '出品ステータス' : 'ステータス';
+    if (statusKey in outputColMap) {
+      outputSheet.getRange(dbRow, outputColMap[statusKey] + 1).setValue('Active');
+    }
+    if ('出品タイムスタンプ' in outputColMap) {
+      outputSheet.getRange(dbRow, outputColMap['出品タイムスタンプ'] + 1).setValue(timestamp);
+    }
+    if ('管理年月' in outputColMap) {
+      outputSheet.getRange(dbRow, outputColMap['管理年月'] + 1).setValue(managementMonth);
+    }
+
+    Logger.log('✅ 出品DB Phase2更新完了: ' + dbRow + '行目 / Item ID: ' + itemId);
+    return { success: true };
+
+  } catch (error) {
+    Logger.log('❌ 出品DB Phase2更新エラー: ' + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * 出品DBの指定行を削除（出品失敗時のロールバック用）
+ *
+ * @param {string} outputDbId 出品DBスプレッドシートID
+ * @param {number} dbRow 削除対象行番号
+ * @returns {{ success: boolean, error?: string }}
+ */
+function deleteDbRow(outputDbId, dbRow) {
+  try {
+    Logger.log('=== 出品DB行削除: ' + dbRow + '行目 ===');
+    const outputSpreadsheet = SpreadsheetApp.openById(outputDbId);
+    const outputSheet = outputSpreadsheet.getSheetByName('出品');
+    if (!outputSheet) {
+      return { success: false, error: '出品DBに「出品」シートが見つかりません' };
+    }
+    outputSheet.deleteRow(dbRow);
+    Logger.log('✅ 出品DB行削除完了: ' + dbRow + '行目');
+    return { success: true };
+  } catch (error) {
+    Logger.log('❌ 出品DB行削除エラー: ' + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * 出品シートにItem ID・タイムスタンプ・ステータスを書き戻す
+ * （DB更新失敗時のフォールバック用）
+ *
+ * @param {string} spreadsheetId 出品スプレッドシートID
+ * @param {number} rowNumber 書き戻し対象行番号
+ * @param {string} itemId eBay Item ID
+ */
+function writeBackToListingSheet(spreadsheetId, rowNumber, itemId) {
+  try {
+    Logger.log('=== 出品シート書き戻し開始 ===');
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+
+    const listingSheet = getTargetSpreadsheet(spreadsheetId).getSheetByName(SHEET_NAMES.LISTING);
+    if (!listingSheet) return;
+
+    const headerMapping = buildHeaderMapping();
+
+    const itemIdCol = headerMapping['Item ID'];
+    if (itemIdCol) listingSheet.getRange(rowNumber, itemIdCol).setValue(itemId);
+
+    const now = new Date();
+    const year   = now.getFullYear();
+    const month  = String(now.getMonth() + 1).padStart(2, '0');
+    const day    = String(now.getDate()).padStart(2, '0');
+    const hour   = String(now.getHours()).padStart(2, '0');
+    const minute = String(now.getMinutes()).padStart(2, '0');
+    const second = String(now.getSeconds()).padStart(2, '0');
+    const timestamp = year + '/' + month + '/' + day + '/' + hour + ':' + minute + ':' + second;
+
+    const tsCol = headerMapping['出品タイムスタンプ'];
+    if (tsCol) listingSheet.getRange(rowNumber, tsCol).setValue(timestamp);
+
+    const statusKey = headerMapping['出品ステータス'] ? '出品ステータス' : 'ステータス';
+    const statusCol = headerMapping[statusKey];
+    if (statusCol) listingSheet.getRange(rowNumber, statusCol).setValue('Active');
+
+    Logger.log('✅ 出品シート書き戻し完了: ' + rowNumber + '行目 / Item ID: ' + itemId);
+  } catch (error) {
+    Logger.log('❌ 出品シート書き戻しエラー: ' + error.toString());
+  } finally {
+    CURRENT_SPREADSHEET_ID = null;
+  }
+}
+
+/**
  * 出品シートと出品DBのヘッダー一覧を Logger に出力するデバッグ関数
  * GASエディタから直接実行して確認する
  *
@@ -1729,9 +1944,7 @@ function deleteListingRow(spreadsheetId, rowNumber) {
  */
 function createListing(spreadsheetId, rowNumber) {
   try {
-    if (spreadsheetId) {
-      CURRENT_SPREADSHEET_ID = spreadsheetId;
-    }
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
 
     Logger.log('=== 出品処理開始: 行' + rowNumber + ' ===');
 
@@ -1747,54 +1960,82 @@ function createListing(spreadsheetId, rowNumber) {
     // 3. ポリシーID変換
     const policyIds = convertPolicyNamesToIds(listingData, spreadsheetId);
 
-    // 4. Trading API: AddItem実行
-    const result = addItemWithTradingApi(listingData, policyIds);
+    // Phase1: 出品前にDB転記（商品データのみ・特殊フィールドは空欄）
+    const config = getEbayConfig();
+    const outputDbId = config.outputDbSpreadsheetId;
+    let dbRow = null;
+    if (outputDbId && outputDbId !== '') {
+      const phase1Result = transferToOutputDb_phase1(spreadsheetId, rowNumber, listingData, outputDbId);
+      if (!phase1Result.success) {
+        return {
+          success: false,
+          message: '⚠️ DB転記に失敗したため出品を中止しました。\n\n理由: ' + phase1Result.error
+        };
+      }
+      dbRow = phase1Result.dbRow;
+      // phase1のfinally でCURRENT_SPREADSHEET_IDがリセットされるため再設定
+      if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+    } else {
+      Logger.log('⚠️ 出品DBが未設定のため転記をスキップします');
+    }
 
+    // Phase2: eBay出品
+    let result;
+    try {
+      result = addItemWithTradingApi(listingData, policyIds);
+    } catch (ebayError) {
+      // 出品失敗 → Phase1で作成したDB行を削除してロールバック
+      if (dbRow && outputDbId) {
+        deleteDbRow(outputDbId, dbRow);
+        Logger.log('⚠️ 出品失敗のためDB転記データを削除しました');
+      }
+      return {
+        success: false,
+        message: '❌ 出品に失敗しました。' + (dbRow ? 'DB転記データを削除しました。' : '') + '\n\n理由: ' + ebayError.toString()
+      };
+    }
     Logger.log('✅ 出品完了');
 
-    // 5. Promoted Listing設定（値が入力されている場合のみ）
+    // Phase3: Promoted Listing設定（任意）
     let promotedListingResult = null;
     if (listingData.promotedListing && !isNaN(parseFloat(listingData.promotedListing))) {
       const adRate = parseFloat(listingData.promotedListing);
       promotedListingResult = createPromotedListing(result.itemId, adRate);
-
       if (!promotedListingResult.success) {
         Logger.log('⚠️ Promoted Listing設定に失敗しましたが、出品は成功しています');
         Logger.log('エラー: ' + promotedListingResult.error);
       }
     }
 
-    // 6. 出品DBに転記
-    const transferred = transferToOutputDb(spreadsheetId, rowNumber, listingData, result);
-
-    // 7. DB転記結果を判定して行クリアまたはエラー返却
-    const dbSuccess = transferred && transferred.success === true;
-    const dbError   = transferred ? transferred.error : null;
-    const dbMissing = (transferred && transferred.missingCols) ? transferred.missingCols : [];
-
-    if (dbSuccess) {
-      clearAndMoveListingRow(spreadsheetId, rowNumber);
-      return {
-        success: true,
-        transferred: true,
-        missingCols: dbMissing,
-        sku: listingData.sku || '',
-        itemId: result.itemId || '',
-        promotedListing: promotedListingResult || null,
-        rowCleared: true
-      };
-    } else {
-      Logger.log('❌ DB転記失敗: ' + (dbError || '不明なエラー'));
-      return {
-        success: false,
-        transferred: false,
-        message: '⚠️ 出品は完了しましたが、DB転記に失敗しました。\n\n理由: ' + (dbError || '不明なエラー'),
-        sku: listingData.sku || '',
-        itemId: result.itemId || '',
-        promotedListing: promotedListingResult || null,
-        rowCleared: false
-      };
+    // Phase4: DB側に特殊フィールドを更新（Item ID・URL・ステータス等）
+    if (dbRow && outputDbId) {
+      const phase2Result = transferToOutputDb_phase2(outputDbId, dbRow, result.itemId);
+      if (!phase2Result.success) {
+        // DB更新失敗 → 出品シートに書き戻してユーザーに通知
+        writeBackToListingSheet(spreadsheetId, rowNumber, result.itemId);
+        return {
+          success: true,
+          transferred: false,
+          warning: '⚠️ 出品は完了しましたが、DB更新に失敗しました。\n出品シートにItem IDを記録しました。\n\n理由: ' + phase2Result.error,
+          itemId: result.itemId,
+          sku: listingData.sku || '',
+          promotedListing: promotedListingResult || null,
+          rowCleared: false
+        };
+      }
     }
+
+    // Phase5: 出品シートのデータクリア
+    clearAndMoveListingRow(spreadsheetId, rowNumber);
+    return {
+      success: true,
+      transferred: dbRow !== null,
+      itemId: result.itemId,
+      sku: listingData.sku || '',
+      promotedListing: promotedListingResult || null,
+      rowCleared: true,
+      missingCols: []
+    };
 
   } catch (error) {
     Logger.log('❌ 出品エラー: ' + error.toString());

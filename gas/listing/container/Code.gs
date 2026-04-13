@@ -85,10 +85,13 @@ function menuCreateListing() {
 
   try {
     const result = EbayLib.menuCreateListing(spreadsheetId, row);
-    if (result.success) {
-      ui.alert('出品完了', '1件の出品が完了しました。', ui.ButtonSet.OK);
+    if (result.success && result.warning) {
+      ui.alert('⚠️ 注意', result.warning, ui.ButtonSet.OK);
+    } else if (result.success) {
+      const msg = '✅ 出品完了・DB転記完了\nItem ID: ' + result.itemId;
+      ui.alert('出品完了', msg, ui.ButtonSet.OK);
     } else {
-      ui.alert('エラー', result.message, ui.ButtonSet.OK);
+      ui.alert('エラー', result.message || '不明なエラーが発生しました。', ui.ButtonSet.OK);
     }
   } catch (e) {
     ui.alert('エラー', '❌ 出品エラー:\n' + e.toString(), ui.ButtonSet.OK);
