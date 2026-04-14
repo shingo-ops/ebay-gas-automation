@@ -109,7 +109,7 @@ function menuCreateListing() {
   }
 
   // 出品前に強制ワード判定を実行（シートの値に依存せず毎回チェック）
-  const headerMapping = _buildListingHeaderMapping(sheet);
+  const headerMapping = EbayLib.buildListingHeaderMapping(spreadsheetId, sheet.getName());
   const titleCol = headerMapping['タイトル'];
   const titleForCheck = titleCol
     ? String(sheet.getRange(row, titleCol).getValue() || '').trim()
@@ -207,7 +207,7 @@ function menuReviseItem() {
     return;
   }
 
-  const headerMapping = _buildListingHeaderMapping(sheet);
+  const headerMapping = EbayLib.buildListingHeaderMapping(spreadsheetId, sheet.getName());
 
   // Item IDを取得
   const itemIdCol = headerMapping['Item ID'];
@@ -266,7 +266,7 @@ function menuEndListing() {
     return;
   }
 
-  const headerMapping = _buildListingHeaderMapping(sheet);
+  const headerMapping = EbayLib.buildListingHeaderMapping(spreadsheetId, sheet.getName());
   const itemIdCol = headerMapping['Item ID'];
   if (!itemIdCol) {
     ui.alert('エラー', '「Item ID」列が見つかりません。', ui.ButtonSet.OK);
@@ -415,7 +415,7 @@ function handleEdit(e) {
     const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
 
     // ヘッダーマッピングを構築
-    const headerMapping = _buildListingHeaderMapping(sheet);
+    const headerMapping = EbayLib.buildListingHeaderMapping(spreadsheetId, sheet.getName());
 
     // 出品ステータス → "End" の場合は取り下げ処理
     const statusCol = headerMapping['出品ステータス'] || headerMapping['ステータス'];
@@ -938,23 +938,6 @@ function testGetPolicies() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // スペックURL変更ハンドラー（listing/container 専用）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * 出品シートのヘッダーマッピングを構築（ヘッダー行=1行目）
- * @param {Sheet} sheet
- * @returns {Object} {ヘッダー名: 列番号(1-based)}
- */
-function _buildListingHeaderMapping(sheet) {
-  const lastCol = sheet.getLastColumn();
-  if (lastCol === 0) return {};
-  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  const map = {};
-  for (let i = 0; i < headers.length; i++) {
-    const h = String(headers[i] || '').trim();
-    if (h) map[h] = i + 1;
-  }
-  return map;
-}
 
 /**
  * スペックURL変更時の確認ダイアログ

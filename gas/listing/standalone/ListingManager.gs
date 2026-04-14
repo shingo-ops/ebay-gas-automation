@@ -27,6 +27,30 @@ function getListingSheetHeaderMapping(spreadsheetId) {
 }
 
 /**
+ * 出品シート（任意）のヘッダー名→列番号マップを返す
+ * container側の _buildListingHeaderMapping(sheet) の置き換え用
+ *
+ * @param {string} spreadsheetId スプレッドシートID
+ * @param {string} [sheetName='出品'] シート名
+ * @returns {{ [headerName: string]: number }} ヘッダー名→列番号（1-based）
+ */
+function buildListingHeaderMapping(spreadsheetId, sheetName) {
+  if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+  const ss = getTargetSpreadsheet(spreadsheetId);
+  const sheet = ss.getSheetByName(sheetName || SHEET_NAMES.LISTING);
+  if (!sheet) return {};
+  const lastCol = sheet.getLastColumn();
+  if (lastCol === 0) return {};
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const map = {};
+  for (let i = 0; i < headers.length; i++) {
+    const h = String(headers[i] || '').trim();
+    if (h) map[h] = i + 1;
+  }
+  return map;
+}
+
+/**
  * Vero/禁止ワードシートとタイトルを照合してワード判定列に結果を書き込む
  * 優先度: 禁止ワード > VERO > 該当なし
  *
