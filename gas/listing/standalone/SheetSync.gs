@@ -67,36 +67,57 @@ function syncSheet(spreadsheetId, sheetName, direction) {
       return { success: false, message: sourceLabel + 'に「' + sheetName + '」シートが見つかりません。' };
     }
 
-    // コピー先に既存シートがあれば削除（copyTo後にリネームするため先に除去）
-    const existingDestSheet = destSS.getSheetByName(sheetName);
-    if (existingDestSheet) {
-      // シートが1枚しかない場合は削除できないためダミーシートを挿入
-      if (destSS.getSheets().length === 1) {
-        destSS.insertSheet('__temp__');
+    const tempName = '_sync_temp_' + sheetName + '_' + Date.now();
+    let copiedSheet = null;
+
+    try {
+      // 1. 一時名でコピー（copyTo成功を確認してから既存シートを削除）
+      copiedSheet = sourceSheet.copyTo(destSS);
+      copiedSheet.setName(tempName);
+      Logger.log('✅ copyTo() 完了（一時名: ' + tempName + '）');
+
+      // 2. 既存シートを削除（コピー成功後なのでデータロスなし）
+      const existingDestSheet = destSS.getSheetByName(sheetName);
+      if (existingDestSheet) {
+        // シートが1枚しかない場合は削除できないためダミーシートを挿入
+        if (destSS.getSheets().length === 1) {
+          destSS.insertSheet('__temp__');
+        }
+        destSS.deleteSheet(existingDestSheet);
+        Logger.log('既存の「' + sheetName + '」シートを削除しました');
       }
-      destSS.deleteSheet(existingDestSheet);
-      Logger.log('既存の「' + sheetName + '」シートを削除しました');
+
+      // ダミーシートが残っていれば削除
+      const tempSheet = destSS.getSheetByName('__temp__');
+      if (tempSheet) destSS.deleteSheet(tempSheet);
+
+      // 3. 一時名を正式名にリネーム
+      copiedSheet.setName(sheetName);
+      Logger.log('✅ リネーム完了: 「' + sheetName + '」');
+
+      const lastRow = sourceSheet.getLastRow();
+      const lastCol = sourceSheet.getLastColumn();
+
+      return {
+        success: true,
+        message: '「' + sheetName + '」を ' + sourceLabel + ' → ' + destLabel + ' に同期しました。\n' +
+                 '列幅・行高さ・書式・数式をすべて引き継ぎました。（' + lastRow + '行 × ' + lastCol + '列）\n\n' +
+                 '⚠️ 数式やプルダウンが他のシートを参照している場合、同期先でエラーになることがあります。\n' +
+                 'まだ「プルダウン管理」「ツール設定」を同期していない場合は先に同期してください。'
+      };
+
+    } catch (syncErr) {
+      // コピーは成功したが削除 or リネームで失敗した場合、一時シートを掃除
+      if (copiedSheet) {
+        try {
+          destSS.deleteSheet(copiedSheet);
+          Logger.log('一時シートを削除しました: ' + tempName);
+        } catch (cleanupErr) {
+          Logger.log('一時シート削除失敗: ' + cleanupErr.toString());
+        }
+      }
+      throw syncErr;
     }
-
-    // copyTo() で完全コピー（列幅・行高さ・書式・数式・プルダウン・結合すべて引き継ぎ）
-    const copiedSheet = sourceSheet.copyTo(destSS);
-    copiedSheet.setName(sheetName);
-    Logger.log('✅ copyTo() 完了: 「' + copiedSheet.getName() + '」');
-
-    // ダミーシートが残っていれば削除
-    const tempSheet = destSS.getSheetByName('__temp__');
-    if (tempSheet) destSS.deleteSheet(tempSheet);
-
-    const lastRow = sourceSheet.getLastRow();
-    const lastCol = sourceSheet.getLastColumn();
-
-    return {
-      success: true,
-      message: '「' + sheetName + '」を ' + sourceLabel + ' → ' + destLabel + ' に同期しました。\n' +
-               '列幅・行高さ・書式・数式をすべて引き継ぎました。（' + lastRow + '行 × ' + lastCol + '列）\n\n' +
-               '⚠️ 数式やプルダウンが他のシートを参照している場合、同期先でエラーになることがあります。\n' +
-               'まだ「プルダウン管理」「ツール設定」を同期していない場合は先に同期してください。'
-    };
 
   } catch (e) {
     Logger.log('❌ シート同期エラー: ' + e.toString());
