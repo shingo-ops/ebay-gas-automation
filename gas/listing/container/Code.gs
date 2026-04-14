@@ -191,6 +191,13 @@ function menuCreateListing() {
     } else if (result.success) {
       const msg = '✅ 出品完了・DB転記完了\nItem ID: ' + result.itemId;
       ui.alert('出品完了', msg, ui.ButtonSet.OK);
+      if (result.skippedColumns && result.skippedColumns.length > 0) {
+        SpreadsheetApp.getActiveSpreadsheet().toast(
+          '⚠️ 以下の列はDB書き込みをスキップしました: ' + result.skippedColumns.join(', '),
+          'DB書き込み一部スキップ',
+          10
+        );
+      }
     } else {
       ui.alert('エラー', result.message || '不明なエラーが発生しました。', ui.ButtonSet.OK);
     }

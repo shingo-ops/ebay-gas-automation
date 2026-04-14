@@ -2033,21 +2033,32 @@ function transferToOutputDb_phase2(outputDbId, dbRow, itemId, sku, epsImages) {
     const managementMonth = parseInt(year + month);
     const listingUrl      = 'https://www.ebay.com/itm/' + itemId;
 
+    // 修正1: 各列の書き込みエラーで全体が止まらないようにする
+    const skippedColumns = [];
+    function safeSetValue(col, value, colName) {
+      try {
+        outputSheet.getRange(dbRow, col).setValue(value);
+      } catch(e) {
+        Logger.log('⚠️ DB書き込みスキップ: ' + colName + ' (列' + col + ') → ' + e.toString());
+        skippedColumns.push(colName);
+      }
+    }
+
     if ('Item ID' in outputColMap) {
-      outputSheet.getRange(dbRow, outputColMap['Item ID'] + 1).setValue(itemId);
+      safeSetValue(outputColMap['Item ID'] + 1, itemId, 'Item ID');
     }
     if ('出品URL' in outputColMap) {
-      outputSheet.getRange(dbRow, outputColMap['出品URL'] + 1).setValue(listingUrl);
+      safeSetValue(outputColMap['出品URL'] + 1, listingUrl, '出品URL');
     }
     const statusKey = ('出品ステータス' in outputColMap) ? '出品ステータス' : 'ステータス';
     if (statusKey in outputColMap) {
-      outputSheet.getRange(dbRow, outputColMap[statusKey] + 1).setValue('出品中');
+      safeSetValue(outputColMap[statusKey] + 1, '出品中', statusKey);
     }
     if ('出品タイムスタンプ' in outputColMap) {
-      outputSheet.getRange(dbRow, outputColMap['出品タイムスタンプ'] + 1).setValue(timestamp);
+      safeSetValue(outputColMap['出品タイムスタンプ'] + 1, timestamp, '出品タイムスタンプ');
     }
     if ('管理年月' in outputColMap) {
-      outputSheet.getRange(dbRow, outputColMap['管理年月'] + 1).setValue(managementMonth);
+      safeSetValue(outputColMap['管理年月'] + 1, managementMonth, '管理年月');
     }
 
     // EPS URLを画像列に書き戻す
@@ -2063,22 +2074,21 @@ function transferToOutputDb_phase2(outputDbId, dbRow, itemId, sku, epsImages) {
         if (epsIndex >= epsImages.length) break;
         const colName = imageColNames[i];
         if (!(colName in outputColMap)) continue;
-        // 元のDB値が空でなければEPS URLで上書き
+        // 修正2: Drive URLがある列のみEPS URLで上書き（epsIndexは常に進める）
         const currentVal = String(
           outputSheet.getRange(dbRow, outputColMap[colName] + 1).getValue() || ''
         ).trim();
-        if (currentVal !== '') {
-          outputSheet.getRange(dbRow, outputColMap[colName] + 1)
-            .setValue(epsImages[epsIndex]);
+        if (currentVal !== '' && epsIndex < epsImages.length) {
+          safeSetValue(outputColMap[colName] + 1, epsImages[epsIndex], colName);
           Logger.log('DB EPS URL書き込み: ' + colName + ' → ' + epsImages[epsIndex].substring(0, 50));
-          epsIndex++;
         }
+        epsIndex++; // 空欄でもインデックスを進めてズレを防ぐ
       }
       Logger.log('✅ DB EPS URL書き込み完了: ' + epsIndex + '列');
     }
 
     Logger.log('✅ 出品DB Phase2更新完了: ' + dbRow + '行目 / Item ID: ' + itemId);
-    return { success: true };
+    return { success: true, skippedColumns: skippedColumns };
 
   } catch (error) {
     Logger.log('❌ 出品DB Phase2更新エラー: ' + error.toString());
@@ -2572,6 +2582,7 @@ function createListing(spreadsheetId, rowNumber) {
     }
 
     // Phase4: DB側に特殊フィールドを更新（Item ID・URL・ステータス等）
+    let phase2SkippedColumns = [];
     if (dbRow && outputDbId) {
       const phase2Result = transferToOutputDb_phase2(outputDbId, dbRow, result.itemId, listingData.sku, epsImages);
       if (!phase2Result.success) {
@@ -2587,6 +2598,7 @@ function createListing(spreadsheetId, rowNumber) {
           rowCleared: false
         };
       }
+      phase2SkippedColumns = phase2Result.skippedColumns || [];
     }
 
     // Phase5: 出品シートのデータクリア
@@ -2598,6 +2610,7 @@ function createListing(spreadsheetId, rowNumber) {
       sku: listingData.sku || '',
       promotedListing: promotedListingResult || null,
       rowCleared: true,
+      skippedColumns: phase2SkippedColumns,
       missingCols: []
     };
 
