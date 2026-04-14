@@ -2,13 +2,21 @@
  * 仕入元サイト名自動判定・更新機能
  *
  * ツール設定シートの D〜G列（仕入元マスタ）を参照し、
- * 仕入元URL①②③のドメインからサイト名を自動判定して仕入元名①②③に書き込む。
+ * 仕入元URL①②③のドメインからサイト名を自動判定して仕入元①②③に書き込む。
  *
  * ツール設定シートの列構成（D〜G列）:
  *   D列: 仕入元（サイト名）
  *   E列: 仕入元URL（ベースURL）
  *   F列: 画像取得（"対応" の場合に対応）
  *   G列: CSV（"セルスタ" の場合にCSV出力対象）
+ *
+ * 出品シートの対応列:
+ *   仕入元①  ← サイト名を書き込む
+ *   仕入元URL① ← URLが入っている
+ *   仕入元②  ← サイト名を書き込む
+ *   仕入元URL②
+ *   仕入元③  ← サイト名を書き込む
+ *   仕入元URL③
  */
 
 /**
@@ -87,7 +95,7 @@ function detectSiteNameFromUrl(url, siteNameMap) {
 }
 
 /**
- * 出品シートの1行分の仕入元URL①②③からサイト名を判定して仕入元名①②③に書き込む
+ * 出品シートの1行分の仕入元URL①②③からサイト名を判定して仕入元①②③に書き込む
  * onEdit時・一括更新どちらからも呼び出せる
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet 出品シート
@@ -97,7 +105,7 @@ function detectSiteNameFromUrl(url, siteNameMap) {
  */
 function updateSiteNameForRow(sheet, row, headerMapping, siteNameMap) {
   const urlKeys  = ['仕入元URL①', '仕入元URL②', '仕入元URL③'];
-  const nameKeys = ['仕入元名①', '仕入元名②', '仕入元名③'];
+  const nameKeys = ['仕入元①',    '仕入元②',    '仕入元③'];
 
   for (let i = 0; i < 3; i++) {
     const urlCol  = headerMapping[urlKeys[i]];
@@ -115,7 +123,7 @@ function updateSiteNameForRow(sheet, row, headerMapping, siteNameMap) {
 }
 
 /**
- * 出品シート全行の仕入元名を一括更新する
+ * 出品シート全行の仕入元①②③を一括更新する
  * メニューから呼び出す用
  *
  * @param {string} spreadsheetId
@@ -146,20 +154,11 @@ function updatePurchaseSiteNames(spreadsheetId) {
       if (name) headerMapping[name] = i + 1;
     });
 
-    // 仕入元名①②③列が存在するか確認
-    const nameKeys = ['仕入元名①', '仕入元名②', '仕入元名③'];
-    const missing = nameKeys.filter(function(k) { return !headerMapping[k]; });
-    if (missing.length > 0) {
-      return {
-        success: false,
-        message: '以下の列が出品シートに見つかりません:\n' + missing.join(', ') +
-                 '\n\n列を追加してから再実行してください。'
-      };
-    }
+    const urlKeys  = ['仕入元URL①', '仕入元URL②', '仕入元URL③'];
+    const nameKeys = ['仕入元①',    '仕入元②',    '仕入元③'];
 
     let updatedCount = 0;
     for (let row = 2; row <= lastRow; row++) {
-      const urlKeys = ['仕入元URL①', '仕入元URL②', '仕入元URL③'];
       for (let i = 0; i < 3; i++) {
         const urlCol  = headerMapping[urlKeys[i]];
         const nameCol = headerMapping[nameKeys[i]];
@@ -176,7 +175,7 @@ function updatePurchaseSiteNames(spreadsheetId) {
       }
     }
 
-    Logger.log('✅ 仕入元名一括更新完了: ' + updatedCount + '件');
+    Logger.log('✅ 仕入元一括更新完了: ' + updatedCount + '件');
     return { success: true, message: updatedCount + '件の仕入元名を更新しました' };
 
   } catch(e) {

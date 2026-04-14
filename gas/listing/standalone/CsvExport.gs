@@ -137,10 +137,10 @@ function exportSellstaCsv(spreadsheetId) {
       imageUrls.forEach(function(url, i) {
         rowData['image_url' + (i + 1)] = url;
       });
-      // 仕入元名①②③が設定済みならサイト名を、なければURLをフォールバック
-      rowData['①仕入先情報'] = getCellDisplay(disp, dbMap, '仕入元名①') || getCellDisplay(disp, dbMap, '仕入元URL①');
-      rowData['②仕入先情報'] = getCellDisplay(disp, dbMap, '仕入元名②') || getCellDisplay(disp, dbMap, '仕入元URL②');
-      rowData['③仕入先情報'] = getCellDisplay(disp, dbMap, '仕入元名③') || getCellDisplay(disp, dbMap, '仕入元URL③');
+      // 仕入元①②③が設定済みならサイト名を、なければURLをフォールバック
+      rowData['①仕入先情報'] = getCellDisplay(disp, dbMap, '仕入元①') || getCellDisplay(disp, dbMap, '仕入元URL①');
+      rowData['②仕入先情報'] = getCellDisplay(disp, dbMap, '仕入元②') || getCellDisplay(disp, dbMap, '仕入元URL②');
+      rowData['③仕入先情報'] = getCellDisplay(disp, dbMap, '仕入元③') || getCellDisplay(disp, dbMap, '仕入元URL③');
       rowData['Custom label (SKU)'] = getCellDisplay(disp, dbMap, '仕入れキーワード');
       rowData['Condition']         = conditionId;
       rowData['Condition description'] = getCellDisplay(disp, dbMap, '状態説明');
