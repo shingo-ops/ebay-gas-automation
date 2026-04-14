@@ -166,6 +166,20 @@ function menuCreateListing() {
     if (veroResponse !== ui.Button.OK) return;
   }
 
+  const condDescCol = headerMapping['状態説明'];
+  if (condDescCol) {
+    const condDesc = String(sheet.getRange(row, condDescCol).getValue() || '');
+    if (condDesc.length > 1000) {
+      ui.alert(
+        '❌ 出品不可',
+        '状態説明が1000文字を超えています（現在: ' + condDesc.length + '文字）。\n' +
+        '1000文字以内に修正してから再度出品してください。',
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+  }
+
   const response = ui.alert(
     '出品確認',
     row + '行目を新規出品します。\n実行しますか？',
