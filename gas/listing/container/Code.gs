@@ -166,18 +166,15 @@ function menuCreateListing() {
     if (veroResponse !== ui.Button.OK) return;
   }
 
-  const condDescCol = headerMapping['状態説明'];
-  if (condDescCol) {
-    const condDesc = String(sheet.getRange(row, condDescCol).getValue() || '');
-    if (condDesc.length > 1000) {
-      ui.alert(
-        '❌ 出品不可',
-        '状態説明が1000文字を超えています（現在: ' + condDesc.length + '文字）。\n' +
-        '1000文字以内に修正してから再度出品してください。',
-        ui.ButtonSet.OK
-      );
-      return;
-    }
+  // === 文字数制限チェック ===
+  const charLimitResult = EbayLib.validateCharacterLimits(spreadsheetId, sheet.getName(), row);
+  if (!charLimitResult.valid) {
+    ui.alert(
+      '❌ 出品不可（文字数制限超過）',
+      charLimitResult.errors.join('\n\n'),
+      ui.ButtonSet.OK
+    );
+    return;
   }
 
   const response = ui.alert(
@@ -491,6 +488,22 @@ function handleEdit(e) {
         Logger.log('仕入元名自動判定エラー: ' + siteErr.toString());
       }
       return;
+    }
+
+    // === リアルタイム文字数チェック ===
+    const editedValue = String(e.value !== undefined ? e.value : range.getValue() || '');
+    try {
+      const charCheck = EbayLib.checkCharacterLimitOnEdit(spreadsheetId, sheet.getName(), row, col, editedValue);
+      if (charCheck !== null) {
+        if (charCheck.over) {
+          range.setBackground('#FFCCCC');
+          SpreadsheetApp.getActiveSpreadsheet().toast(charCheck.warning, '⚠️ 文字数オーバー', 5);
+        } else {
+          range.setBackground(null);
+        }
+      }
+    } catch(charErr) {
+      Logger.log('文字数チェックエラー: ' + charErr.toString());
     }
 
     // その他の列は既存処理（タイトル文字数更新・ワード判定など）に委譲
