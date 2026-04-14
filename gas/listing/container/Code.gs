@@ -1565,22 +1565,20 @@ function menuExportSellstaCsv() {
       return;
     }
 
-    // ダウンロードダイアログを表示（クリック式）
+    // バックエンドでセルスタ_CSVシートをクリア
+    EbayLib.clearSellstaCsvSheet(spreadsheetId);
+
+    // ダウンロードダイアログを表示
     const html = HtmlService.createHtmlOutput(
       '<html><body style="font-family:sans-serif; padding:16px;">' +
       '<p style="font-size:14px; margin:0 0 8px;">✅ ' + result.message + '</p>' +
       '<p style="font-size:12px; color:#555; margin:0 0 16px;">ファイル名: ' + result.fileName + '</p>' +
       '<a href="' + result.downloadUrl + '" target="_blank"' +
       '   style="display:inline-block; padding:10px 20px; background:#1a73e8; color:#fff;' +
-      '          text-decoration:none; border-radius:4px; font-size:14px;"' +
-      '   onclick="document.getElementById(\'btn\').style.display=\'none\';' +
-      '            document.getElementById(\'done\').style.display=\'inline-block\';"' +
-      '   id="btn">📥 CSVをダウンロード</a>' +
-      '<button id="done"' +
-      '   style="display:none; margin-left:12px; padding:10px 20px; font-size:14px; cursor:pointer;"' +
-      '   onclick="google.script.run.withSuccessHandler(function(){' +
-      '     google.script.host.close();' +
-      '   }).menuClearSellstaCsvSheet();">完了（シートをクリア）</button>' +
+      '          text-decoration:none; border-radius:4px; font-size:14px; margin-right:12px;">' +
+      '📥 CSVをダウンロード</a>' +
+      '<button onclick="google.script.host.close();"' +
+      '   style="padding:10px 20px; font-size:14px; cursor:pointer;">OK</button>' +
       '</body></html>'
     ).setTitle('CSVダウンロード').setWidth(450).setHeight(130);
 
