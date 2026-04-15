@@ -118,21 +118,24 @@ function clearResearchRows() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   const lastCol = sheet.getLastColumn();
   const targetRows = [5, 8, 11];
+  const a1Notations = [];
 
   targetRows.forEach(function(row) {
-    for (var col = 1; col <= lastCol; col++) {
-      var cell = sheet.getRange(row, col);
+    // 行全体の数式を1回のAPI呼び出しで取得
+    const formulas = sheet.getRange(row, 1, 1, lastCol).getFormulas()[0];
 
-      // 関数が含まれるセルはスキップ
-      var formula = cell.getFormula();
-      if (formula && formula !== '') {
-        continue;
+    for (var col = 0; col < lastCol; col++) {
+      // 数式なしのセルのみ対象に追加
+      if (!formulas[col]) {
+        a1Notations.push(sheet.getRange(row, col + 1).getA1Notation());
       }
-
-      // 値のみクリア（書式・データ入力規則は維持）
-      cell.clearContent();
     }
   });
+
+  if (a1Notations.length > 0) {
+    // 全対象セルを1回のAPI呼び出しで一括クリア
+    sheet.getRangeList(a1Notations).clearContent();
+  }
 
   SpreadsheetApp.getActiveSpreadsheet().toast(
     '5行目・8行目・11行目のデータをクリアしました（関数は保持）',
