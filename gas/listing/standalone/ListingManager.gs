@@ -1317,6 +1317,14 @@ function addItemWithTradingApi(listingData, policyIds) {
   const config = getEbayConfig();
   const apiUrl = getTradingApiUrl();
 
+  // ConditionIDを事前解決（インライン呼び出しをやめてエラーを分かりやすくする）
+  let conditionId;
+  try {
+    conditionId = resolveConditionIdFromMaster(listingData.condition, config, listingData.categoryId);
+  } catch (condErr) {
+    return { success: false, message: '状態（コンディション）の解決に失敗しました。\n状態列の値を確認してください。\n詳細: ' + condErr.toString() };
+  }
+
   // XMLリクエストボディ構築
   let xmlBody = '<?xml version="1.0" encoding="utf-8"?>' +
     '<AddFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">' +
@@ -1328,7 +1336,7 @@ function addItemWithTradingApi(listingData, policyIds) {
     '<Description><![CDATA[' + (listingData.description || '') + ']]></Description>' +
     '<PrimaryCategory><CategoryID>' + listingData.categoryId + '</CategoryID></PrimaryCategory>' +
     '<StartPrice>' + listingData.price + '</StartPrice>' +
-    '<ConditionID>' + resolveConditionIdFromMaster(listingData.condition, config, listingData.categoryId) + '</ConditionID>' +
+    '<ConditionID>' + conditionId + '</ConditionID>' +
     '<Country>JP</Country>' +
     '<Currency>USD</Currency>' +
     '<DispatchTimeMax>3</DispatchTimeMax>' +
@@ -1475,46 +1483,40 @@ function addItemWithTradingApi(listingData, policyIds) {
   const ackElement = root.getChild('Ack', ns);
   const ack = ackElement ? ackElement.getText() : '';
 
+  // エラー・警告を全件収集（eBayは複数の <Errors> を返す場合がある）
+  const errorsElements = root.getChildren('Errors', ns);
+  const allErrors = [];
+  const allWarnings = [];
+  for (var i = 0; i < errorsElements.length; i++) {
+    var err = errorsElements[i];
+    var severity = err.getChildText('SeverityCode', ns);
+    var errorCode = err.getChildText('ErrorCode', ns) || '';
+    var longMsg = err.getChildText('LongMessage', ns) || '';
+    if (severity === 'Error') {
+      Logger.log('❌ eBayエラー: ' + errorCode + ' / ' + longMsg);
+      allErrors.push('ErrorCode: ' + errorCode + ' / ' + longMsg);
+    } else {
+      allWarnings.push('ErrorCode: ' + errorCode + ' / ' + longMsg);
+    }
+  }
+
   if (ack === 'Success' || ack === 'Warning') {
     const itemIdElement = root.getChild('ItemID', ns);
     const itemId = itemIdElement ? itemIdElement.getText() : '';
-
     Logger.log('✅ 出品成功: Item ID = ' + itemId);
-
-    // Warningがある場合はログ出力
-    if (ack === 'Warning') {
-      const errorsElement = root.getChild('Errors', ns);
-      if (errorsElement) {
-        const shortMsg = errorsElement.getChild('ShortMessage', ns);
-        const longMsg = errorsElement.getChild('LongMessage', ns);
-        Logger.log('⚠️ Warning: ' + (shortMsg ? shortMsg.getText() : ''));
-        Logger.log('詳細: ' + (longMsg ? longMsg.getText() : ''));
-      }
+    if (allWarnings.length > 0) {
+      Logger.log('⚠️ Warning: ' + allWarnings.join(' | '));
     }
-
     return {
       success: true,
-      itemId: itemId
+      itemId: itemId,
+      warning: allWarnings.length > 0 ? allWarnings.join('\n') : ''
     };
   } else {
-    // エラー処理
-    const errorsElement = root.getChild('Errors', ns);
-    let errorMessage = 'Unknown error';
-
-    if (errorsElement) {
-      const errorCode = errorsElement.getChild('ErrorCode', ns);
-      const shortMsg = errorsElement.getChild('ShortMessage', ns);
-      const longMsg = errorsElement.getChild('LongMessage', ns);
-
-      errorMessage = 'ErrorCode: ' + (errorCode ? errorCode.getText() : '') + '\n' +
-        'Message: ' + (shortMsg ? shortMsg.getText() : '') + '\n' +
-        'Details: ' + (longMsg ? longMsg.getText() : '');
-    }
-
+    const errorMessage = allErrors.length > 0 ? allErrors.join('\n') : 'Unknown error';
     Logger.log('❌ 出品失敗: ' + errorMessage);
     Logger.log('Full Response: ' + responseText);
-
-    throw new Error('Trading API出品エラー:\n' + errorMessage);
+    return { success: false, message: errorMessage };
   }
 }
 
@@ -2559,7 +2561,7 @@ function createListing(spreadsheetId, rowNumber) {
     try {
       result = addItemWithTradingApi(listingData, policyIds);
     } catch (ebayError) {
-      // 出品失敗 → Phase1で作成したDB行を削除してロールバック
+      // ネットワークエラー等、予期しない例外 → DB行をロールバック
       if (dbRow && outputDbId) {
         deleteDbRow(outputDbId, dbRow, listingData.sku);
         Logger.log('⚠️ 出品失敗のためDB転記データを削除しました');
@@ -2567,6 +2569,17 @@ function createListing(spreadsheetId, rowNumber) {
       return {
         success: false,
         message: '❌ 出品に失敗しました。' + (dbRow ? 'DB転記データを削除しました。' : '') + '\n\n理由: ' + ebayError.toString()
+      };
+    }
+    // eBay APIエラー（Failure レスポンス）→ DB行をロールバック
+    if (!result.success) {
+      if (dbRow && outputDbId) {
+        deleteDbRow(outputDbId, dbRow, listingData.sku);
+        Logger.log('⚠️ 出品失敗のためDB転記データを削除しました');
+      }
+      return {
+        success: false,
+        message: '❌ 出品に失敗しました。' + (dbRow ? 'DB転記データを削除しました。' : '') + '\n\n' + result.message
       };
     }
     Logger.log('✅ 出品完了');

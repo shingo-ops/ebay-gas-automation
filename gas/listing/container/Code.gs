@@ -199,10 +199,20 @@ function menuCreateListing() {
         );
       }
     } else {
-      ui.alert('エラー', result.message || '不明なエラーが発生しました。', ui.ButtonSet.OK);
+      try {
+        var translated = EbayLib.translateEbayError(result.message || '', headerMapping);
+        ui.alert('出品エラー', translated.userMessage, ui.ButtonSet.OK);
+      } catch(translateErr) {
+        ui.alert('エラー', result.message || '不明なエラーが発生しました。', ui.ButtonSet.OK);
+      }
     }
   } catch (e) {
-    ui.alert('エラー', '❌ 出品エラー:\n' + e.toString(), ui.ButtonSet.OK);
+    try {
+      var translated = EbayLib.translateEbayError(e.toString(), headerMapping);
+      ui.alert('出品エラー', translated.userMessage, ui.ButtonSet.OK);
+    } catch(translateErr) {
+      ui.alert('エラー', '❌ 出品エラー:\n' + e.toString(), ui.ButtonSet.OK);
+    }
   }
 }
 
