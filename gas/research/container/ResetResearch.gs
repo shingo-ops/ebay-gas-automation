@@ -106,3 +106,37 @@ function resetResearchFields() {
     SpreadsheetApp.getUi().alert('リセットエラー:\n\n' + error.toString());
   }
 }
+
+/**
+ * リサーチシートの行データをクリア（関数セルは保持）
+ * 図形ボタン「リセット」に割り当てる関数
+ *
+ * クリア対象行: 5行目・8行目・11行目
+ * スキップ条件: 数式が入っているセルは維持（容積重量・手数料など）
+ */
+function clearResearchRows() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const lastCol = sheet.getLastColumn();
+  const targetRows = [5, 8, 11];
+
+  targetRows.forEach(function(row) {
+    for (var col = 1; col <= lastCol; col++) {
+      var cell = sheet.getRange(row, col);
+
+      // 関数が含まれるセルはスキップ
+      var formula = cell.getFormula();
+      if (formula && formula !== '') {
+        continue;
+      }
+
+      // 値のみクリア（書式・データ入力規則は維持）
+      cell.clearContent();
+    }
+  });
+
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    '5行目・8行目・11行目のデータをクリアしました（関数は保持）',
+    '✅ クリア完了',
+    3
+  );
+}
