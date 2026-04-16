@@ -56,8 +56,25 @@ function downloadAndSaveImage(imageUrl, folderUrl, fileName) {
 
     // 画像をダウンロード
     Logger.log('画像ダウンロード中: ' + imageUrl);
-    const response = UrlFetchApp.fetch(imageUrl.toString(), {
-      muteHttpExceptions: true
+
+    // サイト別ヘッダーを設定（リファラチェック対策）
+    const imgUrlStr = imageUrl.toString();
+    const fetchHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    };
+    if (imgUrlStr.includes('r10s.jp')) {
+      fetchHeaders['Referer'] = 'https://item.rakuten.co.jp/';
+    } else if (imgUrlStr.includes('mercdn.net')) {
+      fetchHeaders['Referer'] = 'https://jp.mercari.com/';
+    } else if (imgUrlStr.includes('auctions.c.yimg.jp')) {
+      fetchHeaders['Referer'] = 'https://auctions.yahoo.co.jp/';
+    } else if (imgUrlStr.includes('shopping.c.yimg.jp')) {
+      fetchHeaders['Referer'] = 'https://store.shopping.yahoo.co.jp/';
+    }
+
+    const response = UrlFetchApp.fetch(imgUrlStr, {
+      muteHttpExceptions: true,
+      headers: fetchHeaders
     });
 
     if (response.getResponseCode() !== 200) {

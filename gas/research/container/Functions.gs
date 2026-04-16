@@ -859,26 +859,26 @@ function transferListingDataWithPolicy(policyRow, policyLabel) {
 
             const imageResult = downloadAndSaveImage(imageUrl, imageFolderUrl, baseFileName);
 
-            if (imageResult.success) {
-              // 画像1～23列に保存したURLを出力
-              const imageColumnKey = 'IMAGE_' + (i + 1);
-              const imageHeaderName = LISTING_COLUMNS[imageColumnKey] ? LISTING_COLUMNS[imageColumnKey].header : null;
+            // 画像列を特定（成功・失敗両方で使用）
+            const imageColumnKey = 'IMAGE_' + (i + 1);
+            const imageHeaderName = LISTING_COLUMNS[imageColumnKey] ? LISTING_COLUMNS[imageColumnKey].header : null;
+            const imageCol = imageHeaderName ? getColumnByHeader(headerMapping, imageHeaderName) : null;
 
+            if (imageResult.success) {
               if (!imageHeaderName) {
                 Logger.log('⚠️ 警告: ' + imageColumnKey + ' がLISTING_COLUMNSに存在しません');
+              } else if (!imageCol) {
+                Logger.log('⚠️ 警告: 出品シートのヘッダー行（1行目）に「' + imageHeaderName + '」列が見つかりません。この画像の保存をスキップします。');
               } else {
-                const imageCol = getColumnByHeader(headerMapping, imageHeaderName);
-                Logger.log('画像' + (i + 1) + ': imageCol=' + imageCol + ', imageHeaderName=' + imageHeaderName);
-
-                if (!imageCol || imageCol === null || imageCol === undefined) {
-                  Logger.log('⚠️ 警告: 出品シートのヘッダー行（1行目）に「' + imageHeaderName + '」列が見つかりません。この画像の保存をスキップします。');
-                } else {
-                  listingSheet.getRange(newRow, imageCol).setValue(imageResult.driveUrl);
-                  Logger.log('✅ 画像' + (i + 1) + 'を' + imageCol + '列目(' + imageHeaderName + ')に保存: ' + imageResult.driveUrl);
-                }
+                listingSheet.getRange(newRow, imageCol).setValue(imageResult.driveUrl);
+                Logger.log('✅ 画像' + (i + 1) + 'を' + imageCol + '列目(' + imageHeaderName + ')に保存: ' + imageResult.driveUrl);
               }
             } else {
               Logger.log('❌ 画像' + (i + 1) + 'のダウンロードに失敗: ' + imageResult.message);
+              // 失敗理由をシートに記録（空欄のまま見過ごされることを防止）
+              if (imageCol) {
+                listingSheet.getRange(newRow, imageCol).setValue('❌ DL失敗: ' + imageResult.message);
+              }
             }
 
             // レート制限対策
@@ -894,6 +894,11 @@ function transferListingDataWithPolicy(policyRow, policyLabel) {
         }
       } else {
         Logger.log('警告: 画像フォルダが設定されていないため、画像をスキップしました');
+        SpreadsheetApp.getUi().alert(
+          '⚠️ 画像フォルダ未設定',
+          '画像の保存先フォルダが設定されていないため、画像は保存されません。\n\n「ツール設定」シートの「画像フォルダURL」を設定してください。',
+          SpreadsheetApp.getUi().ButtonSet.OK
+        );
       }
     }
 
