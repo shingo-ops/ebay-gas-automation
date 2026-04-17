@@ -118,23 +118,35 @@ function clearResearchRows() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   const lastCol = sheet.getLastColumn();
   const targetRows = [5, 8, 11];
-  const a1Notations = [];
+  // これらのヘッダーに対応するセルは clearContent ではなく 0 をセット
+  const zeroHeaders = ['実重量(g)', '奥行き(cm)', '幅(cm)', '高さ(cm)'];
+  const clearNotations = [];
+  const zeroNotations = [];
 
   targetRows.forEach(function(row) {
-    // 行全体の数式を1回のAPI呼び出しで取得
+    // ヘッダー行（データ行の1つ上）とデータ行の数式を1回ずつ取得
+    const headers = sheet.getRange(row - 1, 1, 1, lastCol).getValues()[0];
     const formulas = sheet.getRange(row, 1, 1, lastCol).getFormulas()[0];
 
     for (var col = 0; col < lastCol; col++) {
-      // 数式なしのセルのみ対象に追加
-      if (!formulas[col]) {
-        a1Notations.push(sheet.getRange(row, col + 1).getA1Notation());
+      if (formulas[col]) continue; // 数式セルはスキップ
+
+      const headerName = String(headers[col] || '').trim();
+      const notation = sheet.getRange(row, col + 1).getA1Notation();
+
+      if (zeroHeaders.indexOf(headerName) !== -1) {
+        zeroNotations.push(notation);
+      } else {
+        clearNotations.push(notation);
       }
     }
   });
 
-  if (a1Notations.length > 0) {
-    // 全対象セルを1回のAPI呼び出しで一括クリア
-    sheet.getRangeList(a1Notations).clearContent();
+  if (clearNotations.length > 0) {
+    sheet.getRangeList(clearNotations).clearContent();
+  }
+  if (zeroNotations.length > 0) {
+    sheet.getRangeList(zeroNotations).setValue(0);
   }
 
   SpreadsheetApp.getActiveSpreadsheet().toast(
