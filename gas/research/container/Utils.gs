@@ -238,55 +238,47 @@ function randomDelay(minMs, maxMs) {
 }
 
 /**
- * 画像URLから取得元サイト名を判定
+ * URLから取得元サイト名を判定（商品ページURL・画像URL両対応）
+ * 全判定に indexOf（部分一致）を使用
+ * 注意: Yahoo系は特定サービス（paypayfleamarket → auctions → shopping）を先に判定すること
  *
- * @param {string} imageUrl 画像URL
- * @returns {string} サイト名（eBay, メルカリ, ヤフオク, 不明）
+ * @param {string} imageUrl 商品ページURL または 画像URL
+ * @returns {string} サイト名（楽天, メルカリ, Amazon, Yahoo!フリマ, ヤフオク, Yahoo!ショッピング, eBay, オフモール, 駿河屋, デジマート, 不明）
  */
 function getSiteNameFromImageUrl(imageUrl) {
-  if (!imageUrl || typeof imageUrl !== 'string') {
-    return '不明';
-  }
+  if (!imageUrl) return '不明';
 
-  const url = imageUrl.toLowerCase();
+  const url = imageUrl.toString().toLowerCase();
 
-  // eBay
-  if (url.includes('ebayimg.com') || url.includes('ebay.com')) {
-    return 'eBay';
-  }
+  // 楽天
+  if (url.indexOf('rakuten.co.jp') !== -1 || url.indexOf('r10s.jp') !== -1) return '楽天';
 
   // メルカリ
-  if (url.includes('mercdn.net') || url.includes('mercari.com')) {
-    return 'メルカリ';
-  }
-
-  // ヤフオク
-  if (url.includes('yimg.jp') || url.includes('yahoo.co.jp')) {
-    return 'ヤフオク';
-  }
+  if (url.indexOf('mercdn.net') !== -1 || url.indexOf('mercari.com') !== -1) return 'メルカリ';
 
   // Amazon
-  if (url.includes('amazon.co.jp') || url.includes('amazon.com') ||
-      url.includes('m.media-amazon.com') || url.includes('images-na.ssl-images-amazon.com')) {
-    return 'Amazon';
-  }
+  if (url.indexOf('amazon.co.jp') !== -1 || url.indexOf('amazon.com') !== -1 ||
+      url.indexOf('m.media-amazon.com') !== -1 || url.indexOf('images-na.ssl-images-amazon.com') !== -1) return 'Amazon';
+
+  // Yahoo系: 特定サービスを先に判定（具体的なドメインから順に）
+  if (url.indexOf('paypayfleamarket.yahoo.co.jp') !== -1) return 'Yahoo!フリマ';
+  if (url.indexOf('auctions.yahoo.co.jp') !== -1 || url.indexOf('auctions.c.yimg.jp') !== -1) return 'ヤフオク';
+  if (url.indexOf('store.shopping.yahoo.co.jp') !== -1 || url.indexOf('shopping.yahoo.co.jp') !== -1 ||
+      url.indexOf('item-shopping.c.yimg.jp') !== -1) return 'Yahoo!ショッピング';
+  if (url.indexOf('yahoo.co.jp') !== -1 || url.indexOf('yimg.jp') !== -1) return 'ヤフオク'; // フォールバック
+
+  // eBay
+  if (url.indexOf('ebayimg.com') !== -1 || url.indexOf('ebay.com') !== -1) return 'eBay';
 
   // オフモール（ハードオフ・オフハウス等）
-  if (url.includes('imageflux.jp') || url.includes('netmall.hardoff.co.jp')) {
-    return 'オフモール';
-  }
+  if (url.indexOf('imageflux.jp') !== -1 || url.indexOf('netmall.hardoff.co.jp') !== -1) return 'オフモール';
 
   // 駿河屋
-  if (url.includes('cdn.suruga-ya.jp') || url.includes('suruga-ya.jp')) {
-    return '駿河屋';
-  }
+  if (url.indexOf('suruga-ya.jp') !== -1) return '駿河屋';
 
   // デジマート
-  if (url.includes('img.digimart.net') || url.includes('digimart.net')) {
-    return 'デジマート';
-  }
+  if (url.indexOf('digimart.net') !== -1) return 'デジマート';
 
-  // その他
   return '不明';
 }
 
