@@ -857,25 +857,30 @@ function extractOffmallImageUrls(productPageUrl) {
     Logger.log('HTML取得完了: ' + html.length + ' バイト');
 
     // imageflux.jp ドメインの画像URLを抽出（オフモール専用CDN）
-    // 例: https://p1-d9ebd2ee.imageflux.jp/c!/w=1280,h=1280,a=0,u=1,q=75/131002/2026_04_01_16_14_19.jpg
+    // HTMLにはサムネイル（w=231,h=182,u=0）が埋め込まれているため、高解像度版に変換する
+    // 変換例: /c!/w=231,h=182,a=0,u=0,q=75/ → /c!/w=1280,h=1280,a=0,u=1,q=90/
     const imgPattern = /https:\/\/[^"']+imageflux\.jp\/[^"']+\.(?:jpg|jpeg|png|gif|webp)/g;
     const matches = html.match(imgPattern) || [];
 
-    // 重複除去（順番は維持）
+    // 重複除去（順番は維持）・高解像度変換
     const seen = new Set();
     const imageUrls = [];
 
     for (let i = 0; i < matches.length; i++) {
-      const url = matches[i];
-      if (!seen.has(url)) {
-        seen.add(url);
-        imageUrls.push(url);
-        Logger.log('  ✓ 画像' + imageUrls.length + ': ' + url);
+      // サムネイルパラメータ → 高解像度パラメータに変換
+      const hiResUrl = matches[i].replace(
+        /\/c!\/w=\d+,h=\d+,a=\d+,u=0,q=\d+\//,
+        '/c!/w=1280,h=1280,a=0,u=1,q=90/'
+      );
+      if (!seen.has(hiResUrl)) {
+        seen.add(hiResUrl);
+        imageUrls.push(hiResUrl);
+        Logger.log('  ✓ 画像' + imageUrls.length + ': ' + hiResUrl);
       }
       if (imageUrls.length >= 20) break; // 最大20枚
     }
 
-    Logger.log('✅ ' + imageUrls.length + '枚の画像を検出');
+    Logger.log('✅ ' + imageUrls.length + '枚の画像を検出（高解像度変換済）');
     return imageUrls.slice(0, 20); // 最大20枚
 
   } catch (error) {
