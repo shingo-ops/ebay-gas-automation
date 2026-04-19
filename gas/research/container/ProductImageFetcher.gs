@@ -505,12 +505,17 @@ function extractRakutenImageUrls(productPageUrl) {
       Logger.log('① JSON抽出: ' + imageUrls.length + '枚');
     }
 
-    // ② imgタグから tshop.r10s.jp / image.rakuten.co.jp を直接抽出（SSRで存在）
-    if (imageUrls.length === 0) {
-      Logger.log('② imgタグから直接抽出を試みます...');
-      const imgPattern = /src="(https:\/\/(?:tshop|shop)\.r10s\.jp[^"]+\.(jpg|jpeg|png|webp))"/gi;
+    // ② imgタグから tshop.r10s.jp を直接抽出（SSRで存在）
+    // shopId で絞り込むことで他店舗・関連商品の画像混入を防ぐ
+    if (imageUrls.length === 0 && shopId) {
+      Logger.log('② imgタグから直接抽出を試みます（shopId絞り込み）...');
+      // shopId を含む tshop.r10s.jp / shop.r10s.jp のみマッチ
+      const shopPattern = new RegExp(
+        'src="(https://(?:tshop|shop)\\.r10s\\.jp/' + shopId + '/[^"]+\\.(?:jpg|jpeg|png|webp))"',
+        'gi'
+      );
       let imgMatch;
-      while ((imgMatch = imgPattern.exec(html)) !== null) {
+      while ((imgMatch = shopPattern.exec(html)) !== null) {
         const url = imgMatch[1];
         if (!seen.has(url)) {
           seen.add(url);
