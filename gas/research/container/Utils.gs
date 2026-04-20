@@ -9,9 +9,11 @@ var _siteMasterCache = null;
 
 /**
  * ツール設定シートからサイトマスタを読み込む（実行内キャッシュ付き）
- * 「サイト名」「ドメイン」のヘッダー行を動的に検索
+ * 「サイト名」「ドメイン」「画像取得」のヘッダー行を動的に検索
  *
- * @returns {Array<{name: string, domain: string}>} ドメイン長降順（具体的なものを先に判定するため）
+ * @returns {Array<{name: string, domain: string, imageSupported: boolean}>}
+ *   ドメイン長降順（具体的なものを先に判定するため）
+ *   imageSupported: 「画像取得」列に「対応」と記載された場合のみ true
  */
 function getSiteMaster() {
   if (_siteMasterCache !== null) return _siteMasterCache;
@@ -27,22 +29,27 @@ function getSiteMaster() {
   _siteMasterCache = [];
 
   // 「サイト名」「ドメイン」が同じ行に揃っているヘッダー行を動的に探す
+  // 「画像取得」列はオプション（存在しない場合は imageSupported が常に false）
   let startRow  = -1;
   let nameCol   = -1;
   let domainCol = -1;
+  let imageCol  = -1;
 
   for (let i = 0; i < data.length; i++) {
     let nc = -1;
     let dc = -1;
+    let ic = -1;
     for (let j = 0; j < data[i].length; j++) {
       const cell = String(data[i][j] || '').trim();
       if (cell === 'サイト名') nc = j;
       if (cell === 'ドメイン')  dc = j;
+      if (cell === '画像取得') ic = j;
     }
     if (nc !== -1 && dc !== -1) {
       startRow  = i + 1;
       nameCol   = nc;
       domainCol = dc;
+      imageCol  = ic; // -1 の場合は列なし（imageSupported は常に false）
       break;
     }
   }
@@ -52,11 +59,14 @@ function getSiteMaster() {
     return _siteMasterCache;
   }
 
+  Logger.log('[getSiteMaster] 画像取得列: ' + (imageCol >= 0 ? '列' + (imageCol + 1) : '未設定'));
+
   for (let i = startRow; i < data.length; i++) {
     const name   = String(data[i][nameCol]   || '').trim();
     const domain = String(data[i][domainCol] || '').trim().toLowerCase();
     if (!name || !domain) break; // 空行で終了
-    _siteMasterCache.push({ name: name, domain: domain });
+    const imageSupported = imageCol >= 0 && String(data[i][imageCol] || '').trim() === '対応';
+    _siteMasterCache.push({ name: name, domain: domain, imageSupported: imageSupported });
   }
 
   // ドメインが長い順にソート（より具体的なドメインを先にヒットさせる）
@@ -64,6 +74,24 @@ function getSiteMaster() {
 
   Logger.log('[getSiteMaster] サイトマスタ読み込み: ' + _siteMasterCache.length + '件');
   return _siteMasterCache;
+}
+
+/**
+ * URLに対してツール設定シートの「画像取得」列が「対応」かを返す
+ *
+ * @param {string} url 商品ページURL
+ * @returns {boolean} true = 画像取得対応、false = 非対応または未登録
+ */
+function isImageSupportedForUrl(url) {
+  if (!url) return false;
+  const u = url.toString().toLowerCase();
+  const master = getSiteMaster();
+  for (let i = 0; i < master.length; i++) {
+    if (u.indexOf(master[i].domain) !== -1) {
+      return master[i].imageSupported;
+    }
+  }
+  return false; // 未登録サイトは非対応
 }
 
 /**

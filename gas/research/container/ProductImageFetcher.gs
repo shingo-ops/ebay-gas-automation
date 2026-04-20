@@ -61,6 +61,13 @@ function extractImageUrlsFromProductPage(productPageUrl) {
     const url = productPageUrl.toString();
     Logger.log('商品ページURL: ' + url);
 
+    // ツール設定シートの「画像取得」列で対応チェック
+    if (!isImageSupportedForUrl(url)) {
+      const siteName = getSiteName(url);
+      Logger.log('⚠️ ' + siteName + ' は画像取得非対応（ツール設定シートで「対応」設定なし）');
+      return [];
+    }
+
     // メルカリ
     if (url.includes('mercari.com')) {
       Logger.log('📦 メルカリURL検出');
@@ -471,12 +478,6 @@ function extractRakutenImageUrls(productPageUrl) {
     const shopIdMatch = productPageUrl.match(/item\.rakuten\.co\.jp\/([^\/]+)\//);
     const shopId = shopIdMatch ? shopIdMatch[1] : null;
     Logger.log('ショップID: ' + (shopId || '不明'));
-
-    // 楽天ブックスはレスポンスが極端に遅くタイムアウトリスクがあるため対象外
-    if (shopId === 'book') {
-      Logger.log('⚠️ 楽天ブックスは画像取得対象外（タイムアウトリスク）');
-      return [];
-    }
 
     // HTMLを取得
     const response = UrlFetchApp.fetch(productPageUrl, {
