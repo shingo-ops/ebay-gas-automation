@@ -472,6 +472,12 @@ function extractRakutenImageUrls(productPageUrl) {
     const shopId = shopIdMatch ? shopIdMatch[1] : null;
     Logger.log('ショップID: ' + (shopId || '不明'));
 
+    // 楽天ブックスはレスポンスが極端に遅くタイムアウトリスクがあるため対象外
+    if (shopId === 'book') {
+      Logger.log('⚠️ 楽天ブックスは画像取得対象外（タイムアウトリスク）');
+      return [];
+    }
+
     // HTMLを取得
     const response = UrlFetchApp.fetch(productPageUrl, {
       method: 'GET',
