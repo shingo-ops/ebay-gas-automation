@@ -1137,11 +1137,25 @@ function reviseFixedPriceItem(spreadsheetId, rowNumber) {
       xmlBody += '</PictureDetails>';
     }
 
+    // ISBN を項目名①～30 から検出して ProductListingDetails 経由で送信
+    const isbnSpec = (listingData.itemSpecifics || []).find(function(spec) {
+      return spec.name && spec.name.trim() === 'ISBN';
+    });
+    if (isbnSpec && isbnSpec.value) {
+      xmlBody += '<ProductListingDetails>' +
+        '<ISBN>' + escapeXml(String(isbnSpec.value).trim()) + '</ISBN>' +
+        '</ProductListingDetails>';
+    }
+
     // Item Specifics（AddFixedPriceItem と同じ構造: 専用列 + 項目名/内容列）
-    const reviseExclude = ['Brand', 'MPN', 'UPC', 'EAN'];
+    // ISBN は ProductListingDetails 経由で送信済みのため除外
+    const reviseExclude = ['Brand', 'MPN', 'UPC', 'EAN', 'ISBN'];
+    const filteredSpecifics = (listingData.itemSpecifics || []).filter(function(spec) {
+      return spec.name && spec.name.trim() !== 'ISBN';
+    });
     const hasSpecifics = listingData.brand || listingData.mpn ||
                          listingData.upc   || listingData.ean ||
-                         (listingData.itemSpecifics && listingData.itemSpecifics.length > 0);
+                         filteredSpecifics.length > 0;
 
     if (hasSpecifics) {
       xmlBody += '<ItemSpecifics>';
@@ -1166,16 +1180,14 @@ function reviseFixedPriceItem(spreadsheetId, rowNumber) {
         xmlBody += '<NameValueList><Name>EAN</Name>' +
           '<Value>' + escapeXml(String(listingData.ean).trim()) + '</Value></NameValueList>';
       }
-      // 項目名①～30（専用列と重複する名前は除外）
-      if (listingData.itemSpecifics && listingData.itemSpecifics.length > 0) {
-        listingData.itemSpecifics.forEach(function(spec) {
-          if (reviseExclude.indexOf(spec.name) !== -1) return;
-          xmlBody += '<NameValueList>' +
-            '<Name>'  + escapeXml(spec.name)  + '</Name>' +
-            '<Value>' + escapeXml(spec.value) + '</Value>' +
-            '</NameValueList>';
-        });
-      }
+      // 項目名①～30（専用列と重複する名前は除外、ISBN は除外済み）
+      filteredSpecifics.forEach(function(spec) {
+        if (reviseExclude.indexOf(spec.name) !== -1) return;
+        xmlBody += '<NameValueList>' +
+          '<Name>'  + escapeXml(spec.name)  + '</Name>' +
+          '<Value>' + escapeXml(spec.value) + '</Value>' +
+          '</NameValueList>';
+      });
 
       xmlBody += '</ItemSpecifics>';
     }
@@ -1432,7 +1444,23 @@ function addItemWithTradingApi(listingData, policyIds) {
     ) +
     '</SellerProfiles>';
 
+  // ISBN を項目名①～30 から検出して ProductListingDetails 経由で送信
+  var isbnSpec = (listingData.itemSpecifics || []).find(function(spec) {
+    return spec.name && spec.name.trim() === 'ISBN';
+  });
+  if (isbnSpec && isbnSpec.value) {
+    xmlBody += '<ProductListingDetails>' +
+      '<ISBN>' + escapeXml(String(isbnSpec.value).trim()) + '</ISBN>' +
+      '</ProductListingDetails>';
+  }
+
   // ItemSpecifics構築（専用列のBrand/UPC/EAN/MPNも含める）
+  // ISBN は ProductListingDetails 経由で送信済みのため除外
+  var excludeFromSpecifics = ['Brand', 'MPN', 'UPC', 'EAN', 'ISBN'];
+  var filteredSpecifics = (listingData.itemSpecifics || []).filter(function(spec) {
+    return spec.name && spec.name.trim() !== 'ISBN';
+  });
+
   xmlBody += '<ItemSpecifics>';
 
   // Brand専用列から追加
@@ -1467,17 +1495,14 @@ function addItemWithTradingApi(listingData, policyIds) {
       '</NameValueList>';
   }
 
-  // 項目名/内容列のItem Specifics（専用列で追加済みのものは除外）
-  var excludeFromSpecifics = ['Brand', 'MPN', 'UPC', 'EAN'];
-  if (listingData.itemSpecifics && listingData.itemSpecifics.length > 0) {
-    listingData.itemSpecifics.forEach(function(spec) {
-      if (excludeFromSpecifics.indexOf(spec.name) !== -1) return;
-      xmlBody += '<NameValueList>' +
-        '<Name>' + escapeXml(spec.name) + '</Name>' +
-        '<Value>' + escapeXml(spec.value) + '</Value>' +
-        '</NameValueList>';
-    });
-  }
+  // 項目名/内容列のItem Specifics（専用列・ISBNで除外済みのものを除外）
+  filteredSpecifics.forEach(function(spec) {
+    if (excludeFromSpecifics.indexOf(spec.name) !== -1) return;
+    xmlBody += '<NameValueList>' +
+      '<Name>' + escapeXml(spec.name) + '</Name>' +
+      '<Value>' + escapeXml(spec.value) + '</Value>' +
+      '</NameValueList>';
+  });
 
   xmlBody += '</ItemSpecifics>';
 
