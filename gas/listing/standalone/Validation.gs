@@ -208,6 +208,23 @@ function translateEbayError(apiErrorMessage, headerMapping) {
         var colInfo = headerMapping['売値($)'] ? ' → ' + _colNumToLetter(headerMapping['売値($)']) + '列' : '';
         return '売値が不正です' + colInfo + '。正しい金額を入力してください';
       }
+    },
+    // 層3: EPS/Self Hosted 混在エラー対訳
+    {
+      pattern: /mixture.*Self Hosted.*EPS|Self Hosted.*EPS.*not allowed|mixture.*EPS.*Self Hosted/i,
+      handler: function() {
+        return 'EPS画像 (eBayホスト) とSelf Hosted画像 (外部URL) が混在しています。\n' +
+               'ストア画像列を空にするか、すべての画像列を同じ形式に統一してから再実行してください。\n' +
+               '(ストア画像列に i.ebayimg.com のURLが残っているケースが多いです)';
+      }
+    },
+    // 層3: 内部バリデーション (層2) が検出した混在エラー
+    {
+      pattern: /PICTURE_URL_MIXED_FORMAT/,
+      handler: function() {
+        return '内部バリデーションでEPS/Self Hosted混在を検出しました。\n' +
+               'ストア画像列のURLを確認し、i.ebayimg.com のURLが含まれていれば削除してください。';
+      }
     }
   ];
 

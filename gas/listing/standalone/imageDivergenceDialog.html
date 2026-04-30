@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; margin: 0; padding: 12px 16px; color: #333; }
+    h2 { font-size: 15px; margin: 0 0 10px; color: #d97706; }
+    .section { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+    .label { font-weight: bold; color: #555; margin-bottom: 4px; font-size: 12px; }
+    .url-list { font-family: monospace; font-size: 11px; color: #1d4ed8; word-break: break-all; max-height: 70px; overflow-y: auto; }
+    .url-list li { margin-bottom: 2px; }
+    .count-row { display: flex; gap: 16px; margin-bottom: 10px; }
+    .count-box { flex: 1; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 10px; text-align: center; }
+    .count-box .num { font-size: 22px; font-weight: bold; color: #1d4ed8; }
+    .count-box .desc { font-size: 11px; color: #6b7280; }
+    .options { margin: 10px 0; }
+    .option { display: flex; align-items: flex-start; margin-bottom: 8px; gap: 8px; padding: 8px 10px; border-radius: 6px; border: 1px solid #e5e7eb; cursor: pointer; }
+    .option:hover { background: #f0f9ff; border-color: #7dd3fc; }
+    .option input[type=radio] { margin-top: 2px; flex-shrink: 0; }
+    .option .opt-title { font-weight: bold; font-size: 12px; }
+    .option .opt-desc { color: #6b7280; font-size: 11px; margin-top: 2px; }
+    .option.warn .opt-title { color: #dc2626; }
+    .remember { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; margin: 8px 0; }
+    .btn-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+    button { padding: 7px 18px; border-radius: 5px; border: none; font-size: 13px; cursor: pointer; }
+    #btnOk { background: #2563eb; color: white; }
+    #btnOk:hover { background: #1d4ed8; }
+    #btnCancel { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    #btnCancel:hover { background: #e5e7eb; }
+    #status { font-size: 12px; color: #6b7280; margin-top: 6px; text-align: right; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+    .eps { background: #d1fae5; color: #065f46; }
+    .self { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+
+<h2>⚠️ 画像差分を検出しました</h2>
+
+<div class="count-row">
+  <div class="count-box">
+    <div class="num" id="ebayCount">—</div>
+    <div class="desc">eBay側 (現在)</div>
+  </div>
+  <div class="count-box">
+    <div class="num" id="sheetCount">—</div>
+    <div class="desc">シート側</div>
+  </div>
+</div>
+
+<div class="section" id="ebayOnlySection" style="display:none">
+  <div class="label">eBay側にのみ存在 <span class="badge eps">EPS</span> (UI追加の可能性)</div>
+  <ul class="url-list" id="ebayOnlyList"></ul>
+</div>
+
+<div class="section" id="sheetOnlySection" style="display:none">
+  <div class="label">シート側にのみ存在 <span class="badge self">Self Hosted</span> (UI削除の可能性)</div>
+  <ul class="url-list" id="sheetOnlyList"></ul>
+</div>
+
+<div class="options">
+  <label class="option">
+    <input type="radio" name="choice" value="use_ebay" checked>
+    <div>
+      <div class="opt-title">eBay側を維持してシートに取り込む（推奨）</div>
+      <div class="opt-desc">eBayの現在の画像配列をそのまま送信。シート列も上書き更新します。</div>
+    </div>
+  </label>
+  <label class="option warn">
+    <input type="radio" name="choice" value="use_sheet">
+    <div>
+      <div class="opt-title">⚠️ シート側で上書きする</div>
+      <div class="opt-desc">シートの画像列で送信。eBay側にある追加画像は消えます。</div>
+    </div>
+  </label>
+  <label class="option">
+    <input type="radio" name="choice" value="cancel">
+    <div>
+      <div class="opt-title">キャンセル（更新を中止）</div>
+      <div class="opt-desc">更新を行わず終了します。当該行に「保留」フラグを立てます。</div>
+    </div>
+  </label>
+</div>
+
+<label class="remember">
+  <input type="checkbox" id="rememberChoice">
+  この出品では今後同じ選択を自動適用する
+</label>
+
+<div class="btn-row">
+  <button id="btnCancel" onclick="cancelAction()">閉じる</button>
+  <button id="btnOk" onclick="submitChoice()">実行</button>
+</div>
+<div id="status"></div>
+
+<script>
+var _info = null;
+
+function init() {
+  var rowNumber = <?= rowNumber ?>;
+  google.script.run
+    .withSuccessHandler(function(info) {
+      if (!info) { setStatus('差分情報の取得に失敗しました'); return; }
+      _info = info;
+      document.getElementById('ebayCount').textContent  = info.ebayUrls  ? info.ebayUrls.length  : 0;
+      document.getElementById('sheetCount').textContent = info.sheetUrls ? info.sheetUrls.length : 0;
+
+      var ebayOnly  = (info.ebayUrls  || []).filter(function(u) { return (info.sheetUrls || []).indexOf(u) === -1; });
+      var sheetOnly = (info.sheetUrls || []).filter(function(u) { return (info.ebayUrls  || []).indexOf(u) === -1; });
+
+      if (ebayOnly.length > 0) {
+        document.getElementById('ebayOnlySection').style.display = '';
+        document.getElementById('ebayOnlyList').innerHTML = ebayOnly.map(function(u) {
+          return '<li>' + truncate(u, 80) + '</li>';
+        }).join('');
+      }
+      if (sheetOnly.length > 0) {
+        document.getElementById('sheetOnlySection').style.display = '';
+        document.getElementById('sheetOnlyList').innerHTML = sheetOnly.map(function(u) {
+          return '<li>' + truncate(u, 80) + '</li>';
+        }).join('');
+      }
+    })
+    .withFailureHandler(function(e) { setStatus('エラー: ' + e.message); })
+    .getDivergenceInfo(rowNumber);
+}
+
+function truncate(s, n) {
+  return s.length > n ? s.substring(0, n) + '…' : s;
+}
+
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
+
+function cancelAction() {
+  google.script.host.close();
+}
+
+function submitChoice() {
+  if (!_info) { setStatus('差分情報が読み込まれていません'); return; }
+
+  var choice = document.querySelector('input[name="choice"]:checked').value;
+  var remember = document.getElementById('rememberChoice').checked;
+
+  document.getElementById('btnOk').disabled = true;
+  setStatus('処理中...');
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result && result.success) {
+        setStatus('✅ 更新完了');
+      } else if (result && result.skipped) {
+        setStatus('スキップしました');
+      } else {
+        setStatus('❌ ' + (result ? result.message : '不明なエラー'));
+      }
+      setTimeout(function() { google.script.host.close(); }, 1500);
+    })
+    .withFailureHandler(function(e) {
+      setStatus('❌ エラー: ' + e.message);
+      document.getElementById('btnOk').disabled = false;
+    })
+    .resumeReviseAfterDivergence(_info.spreadsheetId, _info.rowNumber, choice, remember);
+}
+
+init();
+</script>
+</body>
+</html>

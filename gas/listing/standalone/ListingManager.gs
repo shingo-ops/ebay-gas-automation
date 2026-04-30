@@ -1128,10 +1128,102 @@ function reviseFixedPriceItem(spreadsheetId, rowNumber) {
       xmlBody += '<ConditionDescription>' + escapeXml(listingData.conditionDescription) + '</ConditionDescription>';
     }
 
+    // ─── 画像URL正規化 (6層poka-yoke) ──────────────────────────────────────
+
+    const originalImages = (listingData.images || []).slice();
+
+    // --- 層6: GetItem divergence detection -----------------------------------
+    let resolvedImages = originalImages;
+    const divergenceMode = getImageDivergenceMode();
+
+    if (divergenceMode !== 'disabled' && itemId) {
+      const choiceKey = 'DIVERGENCE_CHOICE_' + rowNumber;
+      const storedChoice = PropertiesService.getUserProperties().getProperty(choiceKey);
+
+      if (storedChoice) {
+        // ダイアログ選択済み — 保存された解決済みURLを使用
+        const choiceData = JSON.parse(storedChoice);
+        PropertiesService.getUserProperties().deleteProperty(choiceKey);
+        resolvedImages = choiceData.resolvedUrls || originalImages;
+        Logger.log('層6: ダイアログ選択適用 choice=' + choiceData.choice + ' ' + resolvedImages.length + '枚');
+
+      } else {
+        // 初回 — eBay側と差分チェック
+        try {
+          const ebayImages = getItemPictureUrls(itemId, token, config);
+          Logger.log('層6: eBay側画像=' + ebayImages.length + '枚 シート側=' + originalImages.length + '枚');
+          const divergence = _detectImageDivergence(ebayImages, originalImages);
+
+          if (divergence.hasDivergence) {
+            if (divergenceMode === 'prefer_ebay') {
+              resolvedImages = ebayImages;
+              Logger.log('層6 prefer_ebay: eBay側URLを採用');
+
+            } else if (divergenceMode === 'skip_on_divergence') {
+              Logger.log('層6 skip_on_divergence: 行' + rowNumber + 'をスキップ');
+              return {
+                success: false,
+                skipped: true,
+                message: '⚠️ 画像差分を検出したためスキップ (IMAGE_DIVERGENCE_MODE=skip_on_divergence)\nItem ID: ' + itemId
+              };
+
+            } else {
+              // prompt モード — ダイアログ表示して早期リターン
+              PropertiesService.getUserProperties().setProperty(
+                'DIVERGENCE_INFO_' + rowNumber,
+                JSON.stringify({
+                  spreadsheetId: spreadsheetId,
+                  rowNumber: rowNumber,
+                  itemId: itemId,
+                  ebayUrls: ebayImages,
+                  sheetUrls: originalImages
+                })
+              );
+              const tpl = HtmlService.createTemplateFromFile('imageDivergenceDialog');
+              tpl.rowNumber = rowNumber;
+              SpreadsheetApp.getUi().showModalDialog(
+                tpl.evaluate().setWidth(520).setHeight(470),
+                '⚠️ 画像差分を検出しました'
+              );
+              return {
+                success: false,
+                pendingDivergence: true,
+                message: '画像差分のためダイアログを表示しました。選択後、更新が自動実行されます。'
+              };
+            }
+          }
+        } catch (divergenceErr) {
+          Logger.log('⚠️ 層6: 差分チェックエラー（更新処理を継続）: ' + divergenceErr.toString());
+        }
+      }
+    }
+
+    // --- 層1: 選択的EPSアップロード ----------------------------------------
+    const finalImages = normalizeImagesForRevise(resolvedImages, token);
+
+    // --- 層5: count assertion (画像消失防止) --------------------------------
+    assertPictureCount(resolvedImages, finalImages, itemId, rowNumber);
+
+    // --- 層4: 構造ログ -------------------------------------------------------
+    Logger.log(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      itemId:    itemId,
+      rowNumber: rowNumber,
+      pictureUrls: {
+        total:          finalImages.length,
+        epsCount:       finalImages.filter(function(u) { return u.indexOf('ebayimg.com') !== -1; }).length,
+        selfHostedCount: finalImages.filter(function(u) { return u.indexOf('ebayimg.com') === -1; }).length,
+        samples:        finalImages.slice(0, 3)
+      }
+    }));
+
+    // --- 層2: 混在バリデーション --------------------------------------------
+    validatePictureUrlConsistency(finalImages);
+
     // 画像
-    if (listingData.images && listingData.images.length > 0) {
+    if (finalImages.length > 0) {
       xmlBody += '<PictureDetails>';
-      listingData.images.forEach(function(url) {
+      finalImages.forEach(function(url) {
         xmlBody += '<PictureURL>' + escapeXml(url) + '</PictureURL>';
       });
       xmlBody += '</PictureDetails>';
@@ -3408,3 +3500,147 @@ function extractItemSpecificsFromItem(item) {
   return specifics;
 }
 
+
+// =============================================================================
+// EPS/Self Hosted 混在防止 poka-yoke (層2, 層5, 層6 サポート関数)
+// =============================================================================
+
+/**
+ * 層2: PictureURL 配列の EPS/Self Hosted 混在チェック。
+ * 混在していれば PICTURE_URL_MIXED_FORMAT エラーをスロー。
+ *
+ * @param {string[]} urls 送信前の画像URL配列
+ */
+function validatePictureUrlConsistency(urls) {
+  if (!urls || urls.length === 0) return;
+
+  var hasEps       = urls.some(function(u) { return u.indexOf('ebayimg.com') !== -1; });
+  var hasSelfHosted = urls.some(function(u) { return u.indexOf('ebayimg.com') === -1; });
+
+  if (hasEps && hasSelfHosted) {
+    var epsSamples  = urls.filter(function(u) { return u.indexOf('ebayimg.com') !== -1; }).slice(0, 2);
+    var selfSamples = urls.filter(function(u) { return u.indexOf('ebayimg.com') === -1; }).slice(0, 2);
+    Logger.log('❌ 層2: PICTURE_URL_MIXED_FORMAT EPS=' + epsSamples.join(', ') + ' Self=' + selfSamples.join(', '));
+    throw new Error(
+      'PICTURE_URL_MIXED_FORMAT: EPS/Self Hosted混在を検出しました。\n' +
+      'EPS URL (i.ebayimg.com): ' + epsSamples.join(', ') + '\n' +
+      'Self Hosted URL: ' + selfSamples.join(', ')
+    );
+  }
+}
+
+/**
+ * 層5: count assertion — 画像消失防止。
+ * 正規化後の枚数が元より少ない場合は送信を中止する。
+ *
+ * @param {string[]} original  normalizeImagesForRevise に渡した配列
+ * @param {string[]} final     normalizeImagesForRevise が返した配列
+ * @param {string}   itemId    eBay Item ID（ログ用）
+ * @param {number}   rowNumber 行番号（ログ用）
+ */
+function assertPictureCount(original, final, itemId, rowNumber) {
+  if (!original || original.length === 0) return;
+
+  if (final.length < original.length) {
+    Logger.log('❌ 層5: PICTURE_COUNT_MISMATCH 元=' + original.length + '枚 送信=' + final.length + '枚 ItemID=' + itemId + ' 行=' + rowNumber);
+    throw new Error(
+      'PICTURE_COUNT_MISMATCH: 画像消失リスクのため送信中止。\n' +
+      '元の枚数=' + original.length + '、正規化後=' + final.length + '枚。\n' +
+      'EPSアップロードが失敗した可能性があります。画像URLを確認してください。'
+    );
+  }
+}
+
+/**
+ * 層6: 2つの画像URL配列の差分を検出する。
+ *
+ * @param {string[]} ebayUrls  eBay側 (GetItem から取得)
+ * @param {string[]} sheetUrls シート側
+ * @returns {{ hasDivergence: boolean, ebayOnly: string[], sheetOnly: string[] }}
+ */
+function _detectImageDivergence(ebayUrls, sheetUrls) {
+  var ebayOnly  = (ebayUrls  || []).filter(function(u) { return (sheetUrls || []).indexOf(u) === -1; });
+  var sheetOnly = (sheetUrls || []).filter(function(u) { return (ebayUrls  || []).indexOf(u) === -1; });
+  return {
+    hasDivergence: ebayOnly.length > 0 || sheetOnly.length > 0,
+    ebayOnly:  ebayOnly,
+    sheetOnly: sheetOnly
+  };
+}
+
+/**
+ * 層6: ダイアログから呼び出される差分情報取得関数。
+ * PropertiesService に保存した差分情報を返す。
+ *
+ * @param {number} rowNumber 行番号
+ * @returns {Object|null}
+ */
+function getDivergenceInfo(rowNumber) {
+  var raw = PropertiesService.getUserProperties().getProperty('DIVERGENCE_INFO_' + rowNumber);
+  return raw ? JSON.parse(raw) : null;
+}
+
+/**
+ * 層6: ダイアログの選択結果を受けて更新を再開する。
+ * imageDivergenceDialog.html の submitChoice() から呼ばれる。
+ *
+ * @param {string}  spreadsheetId
+ * @param {number}  rowNumber
+ * @param {string}  choice  'use_ebay' | 'use_sheet' | 'cancel'
+ * @param {boolean} remember この出品で選択を記憶するか
+ * @returns {{ success: boolean, message: string }}
+ */
+function resumeReviseAfterDivergence(spreadsheetId, rowNumber, choice, remember) {
+  // 差分情報を読み出し
+  var infoKey = 'DIVERGENCE_INFO_' + rowNumber;
+  var raw = PropertiesService.getUserProperties().getProperty(infoKey);
+  if (!raw) {
+    return { success: false, message: '差分情報が見つかりません (タイムアウトの可能性)' };
+  }
+  var info = JSON.parse(raw);
+  PropertiesService.getUserProperties().deleteProperty(infoKey);
+
+  if (choice === 'cancel') {
+    // 保留フラグを行に立てる（出品シートの「保留」列があれば書き込む）
+    try {
+      if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+      var ss     = getTargetSpreadsheet();
+      var sheet  = ss.getSheetByName(SHEET_NAMES.LISTING);
+      if (sheet) {
+        var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+        var hMap = {};
+        headers.forEach(function(h, i) { if (h) hMap[String(h).trim()] = i + 1; });
+        var holdCol = hMap['保留'] || hMap['HOLD'] || hMap['hold'];
+        if (holdCol) {
+          sheet.getRange(rowNumber, holdCol).setValue('画像差分保留');
+          Logger.log('層6: 行' + rowNumber + ' 保留フラグ書き込み');
+        }
+      }
+    } catch (e) {
+      Logger.log('⚠️ 保留フラグ書き込みエラー: ' + e.toString());
+    } finally {
+      CURRENT_SPREADSHEET_ID = null;
+    }
+    return { success: false, skipped: true, message: '更新をキャンセルしました' };
+  }
+
+  // 解決済みURL配列を決定
+  var resolvedUrls = choice === 'use_ebay' ? info.ebayUrls : info.sheetUrls;
+
+  // 記憶オプション
+  if (remember && info.itemId) {
+    PropertiesService.getDocumentProperties().setProperty(
+      'imageDivergence_' + info.itemId,
+      choice
+    );
+    Logger.log('層6: ItemID=' + info.itemId + ' の選択を記憶: ' + choice);
+  }
+
+  // DIVERGENCE_CHOICE を保存して reviseFixedPriceItem を再呼び出し
+  PropertiesService.getUserProperties().setProperty(
+    'DIVERGENCE_CHOICE_' + rowNumber,
+    JSON.stringify({ choice: choice, resolvedUrls: resolvedUrls })
+  );
+
+  return reviseFixedPriceItem(spreadsheetId, rowNumber);
+}

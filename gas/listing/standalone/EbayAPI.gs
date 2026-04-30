@@ -465,3 +465,114 @@ function uploadAllImagesToEPS(images, accessToken) {
   Logger.log('EPS アップロード完了: ' + epsUrls.length + '枚成功');
   return epsUrls;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 層1: 選択的EPSアップロード (reviseFixedPriceItem 専用)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 更新フロー用の選択的EPS正規化。
+ * 既にEPS URL (i.ebayimg.com) のものはスキップ、Self Hosted のみアップロード。
+ * アップロード失敗時は元URLを維持（後段の層2/層5で検出させる）。
+ *
+ * @param {string[]} images シートから読み込んだ画像URL配列
+ * @param {string}   accessToken eBay OAuthアクセストークン
+ * @returns {string[]} 正規化後のURL配列
+ */
+function normalizeImagesForRevise(images, accessToken) {
+  if (!images || images.length === 0) return [];
+
+  var normalized = [];
+  for (var i = 0; i < images.length; i++) {
+    var url = images[i];
+    if (!url) continue;
+
+    if (url.indexOf('i.ebayimg.com') !== -1) {
+      // 既にEPS — 再アップロード不要
+      normalized.push(url);
+    } else {
+      // Self Hosted → EPS変換
+      var result = uploadImageToEPS(url, accessToken);
+      if (result.success) {
+        normalized.push(result.epsUrl);
+      } else {
+        // 失敗時は元URLを維持 (層2/層5が検出)
+        Logger.log('⚠️ EPS変換失敗、元URLを維持: ' + url.substring(0, 80) + ' / ' + result.error);
+        normalized.push(url);
+      }
+      if (i < images.length - 1) Utilities.sleep(200);
+    }
+  }
+
+  Logger.log('normalizeImagesForRevise: ' + images.length + '枚入力 → ' + normalized.length + '枚出力');
+  return normalized;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 層6: Trading API GetItem で現在の画像URLを取得
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Trading API GetItem を呼び出してeBay側の現在の PictureURL 配列を返す。
+ *
+ * @param {string} itemId  eBay Item ID
+ * @param {string} token   eBay User Token
+ * @param {Object} config  getEbayConfig() の戻り値
+ * @returns {string[]} eBay側の画像URL配列（取得失敗時は空配列）
+ */
+function getItemPictureUrls(itemId, token, config) {
+  var apiUrl = getTradingApiUrl();
+
+  var xmlBody =
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    '<GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">' +
+      '<RequesterCredentials>' +
+        '<eBayAuthToken>' + escapeXml(token) + '</eBayAuthToken>' +
+      '</RequesterCredentials>' +
+      '<ItemID>' + escapeXml(itemId) + '</ItemID>' +
+      '<OutputSelector>PictureDetails</OutputSelector>' +
+    '</GetItemRequest>';
+
+  var response = UrlFetchApp.fetch(apiUrl, {
+    method: 'post',
+    headers: {
+      'X-EBAY-API-SITEID':              '0',
+      'X-EBAY-API-COMPATIBILITY-LEVEL': TRADING_API_VERSION,
+      'X-EBAY-API-CALL-NAME':           'GetItem',
+      'X-EBAY-API-APP-NAME':            config.appId,
+      'X-EBAY-API-DEV-NAME':            config.devId,
+      'X-EBAY-API-CERT-NAME':           config.certId,
+      'Content-Type':                   'text/xml;charset=utf-8'
+    },
+    payload: xmlBody,
+    muteHttpExceptions: true
+  });
+
+  var statusCode = response.getResponseCode();
+  if (statusCode !== 200) {
+    throw new Error('GetItem HTTPエラー: ' + statusCode);
+  }
+
+  var root = XmlService.parse(response.getContentText()).getRootElement();
+  var ns   = XmlService.getNamespace('urn:ebay:apis:eBLBaseComponents');
+  var ack  = (root.getChild('Ack', ns) || { getText: function() { return ''; } }).getText();
+
+  if (ack !== 'Success' && ack !== 'Warning') {
+    var errEl  = root.getChild('Errors', ns);
+    var errMsg = errEl
+      ? (errEl.getChild('ShortMessage', ns) || { getText: function() { return 'Unknown'; } }).getText()
+      : 'Unknown';
+    throw new Error('GetItem APIエラー: ' + errMsg);
+  }
+
+  var itemEl = root.getChild('Item', ns);
+  if (!itemEl) return [];
+
+  var pictureDetailsEl = itemEl.getChild('PictureDetails', ns);
+  if (!pictureDetailsEl) return [];
+
+  var pictureUrlEls = pictureDetailsEl.getChildren('PictureURL', ns);
+  return pictureUrlEls
+    .map(function(el) { return el.getText(); })
+    .filter(function(u) { return u && u.trim() !== ''; });
+}
