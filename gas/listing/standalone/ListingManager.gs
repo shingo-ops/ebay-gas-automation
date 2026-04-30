@@ -1347,7 +1347,8 @@ function reviseFixedPriceItem(spreadsheetId, rowNumber) {
 
       return {
         success: true,
-        message: '✅ 更新が完了しました\n\nItem ID: ' + itemId + '\n商品名: ' + listingData.title
+        message: '✅ 更新が完了しました\n\nItem ID: ' + itemId + '\n商品名: ' + listingData.title,
+        finalImages: finalImages
       };
     }
 
@@ -3642,5 +3643,68 @@ function resumeReviseAfterDivergence(spreadsheetId, rowNumber, choice, remember)
     JSON.stringify({ choice: choice, resolvedUrls: resolvedUrls })
   );
 
-  return reviseFixedPriceItem(spreadsheetId, rowNumber);
+  var result = reviseFixedPriceItem(spreadsheetId, rowNumber);
+
+  // 更新成功後、シート列に解決済みURLを書き戻す（ポップアップ永続ループ防止）
+  // use_ebay: eBay側EPS URLをそのまま書き戻す
+  // use_sheet: Layer1で正規化されたEPS URLを書き戻す
+  if (result && result.success) {
+    var urlsToWrite = (choice === 'use_ebay') ? info.ebayUrls : result.finalImages;
+    if (urlsToWrite && urlsToWrite.length > 0) {
+      _writeDivergenceResolvedUrlsToSheet(spreadsheetId, rowNumber, urlsToWrite);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * 層6: 差分解決後の画像URLをシート列に書き戻す。
+ * use_ebay / use_sheet 選択後にポップアップが再発しないよう、
+ * extractImageUrls() と同じ列順 (画像1〜23 → ストア画像) でURLを書き込む。
+ *
+ * @param {string}   spreadsheetId
+ * @param {number}   rowNumber
+ * @param {string[]} resolvedUrls  書き戻すURL配列（use_ebay: eBay URLs / use_sheet: Layer1正規化済みURLs）
+ */
+function _writeDivergenceResolvedUrlsToSheet(spreadsheetId, rowNumber, resolvedUrls) {
+  try {
+    if (!resolvedUrls || resolvedUrls.length === 0) return;
+
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+    var sheet = getTargetSpreadsheet(spreadsheetId).getSheetByName(SHEET_NAMES.LISTING);
+    if (!sheet) return;
+
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var hMap = {};
+    headers.forEach(function(h, i) { if (h) hMap[String(h).trim()] = i + 1; });
+
+    // extractImageUrls() と同じ列走査順: 画像1〜23 → ストア画像
+    var colNames = [];
+    for (var i = 1; i <= 23; i++) colNames.push('画像' + i);
+    colNames.push('ストア画像');
+
+    var urlIdx = 0;
+    var writeCount = 0;
+    for (var ci = 0; ci < colNames.length && urlIdx < resolvedUrls.length; ci++) {
+      var colNum = hMap[colNames[ci]];
+      if (!colNum) continue;
+
+      // 値が存在する列のみ書き戻す (extractImageUrls() が値ありの列のみ取得するのと対応)
+      var currentVal = String(sheet.getRange(rowNumber, colNum).getDisplayValue()).trim();
+      if (!currentVal) continue;
+
+      if (resolvedUrls[urlIdx]) {
+        sheet.getRange(rowNumber, colNum).setValue(resolvedUrls[urlIdx]);
+        writeCount++;
+      }
+      urlIdx++;
+    }
+
+    Logger.log('層6: 解決済みURL書き戻し完了: ' + writeCount + '列');
+  } catch (writeErr) {
+    Logger.log('⚠️ 層6: シート書き戻しエラー（更新は完了済み）: ' + writeErr.toString());
+  } finally {
+    CURRENT_SPREADSHEET_ID = null;
+  }
 }
