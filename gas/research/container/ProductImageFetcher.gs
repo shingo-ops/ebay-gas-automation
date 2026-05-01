@@ -61,11 +61,26 @@ function extractImageUrlsFromProductPage(productPageUrl) {
     const url = productPageUrl.toString();
     Logger.log('商品ページURL: ' + url);
 
+    // メルカリショップス（旧ドメイン）: Gate 1 より前に処理
+    // mercari-shops.com は jp.mercari.com/shops/product/ へ 308 リダイレクト済みのため
+    // ツール設定シートのサイトマスタ（jp.mercari.com）に依存せず直接処理する
+    if (url.includes('mercari-shops.com')) {
+      Logger.log('🏪 メルカリショップス（旧ドメイン）URL検出');
+      return extractMercariShopsImageUrls(url);
+    }
+
     // ツール設定シートの「画像取得」列で対応チェック
     if (!isImageSupportedForUrl(url)) {
       const siteName = getSiteName(url);
       Logger.log('⚠️ ' + siteName + ' は画像取得非対応（ツール設定シートで「対応」設定なし）');
       return [];
+    }
+
+    // メルカリショップス（新ドメイン: jp.mercari.com/shops/product/）
+    // 通常の /item/ 形式と異なる画像取得が必要なため先に分岐
+    if (url.includes('jp.mercari.com') && url.includes('/shops/product/')) {
+      Logger.log('🏪 メルカリショップスURL検出');
+      return extractMercariShopsImageUrls(url);
     }
 
     // メルカリ
@@ -223,6 +238,111 @@ function extractMercariImageUrls(productPageUrl) {
     Logger.log('extractMercariImageUrlsエラー: ' + error.toString());
     return [];
   }
+}
+
+/**
+ * メルカリショップス公式 API から全商品画像 URL を取得
+ *
+ * エンドポイント: api.mercari.jp/v1/marketplaces/shops/products/{productId}
+ * レスポンス: productDetail.photos に全画像 URL が入っている
+ *
+ * @param {string} productId 商品 ID
+ * @returns {Array<string>|null} CDN 画像 URL の配列、失敗時は null
+ */
+function _fetchMercariShopsPhotos_(productId) {
+  var apiUrl = 'https://api.mercari.jp/v1/marketplaces/shops/products/' + productId
+    + '?view=FULL&imageType=JPEG';
+
+  try {
+    var dpop = _buildMercariShopsDPoP_('GET', apiUrl);
+    var response = UrlFetchApp.fetch(apiUrl, {
+      method: 'get',
+      muteHttpExceptions: true,
+      headers: {
+        'DPoP':         dpop,
+        'X-Platform':   'web',
+        'Accept':       'application/json',
+        'Accept-Language': 'ja,en;q=0.9',
+        'User-Agent':   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    var code = response.getResponseCode();
+    if (code !== 200) {
+      Logger.log('⚠️ メルカリショップスAPI: HTTPエラー ' + code + ' (productId=' + productId + ')');
+      return null;
+    }
+
+    var json = JSON.parse(response.getContentText('UTF-8'));
+    var photos = json.productDetail && json.productDetail.photos;
+    if (!photos || photos.length === 0) {
+      Logger.log('⚠️ メルカリショップスAPI: photos フィールドが空 (productId=' + productId + ')');
+      return null;
+    }
+
+    Logger.log('✅ メルカリショップスAPI: ' + photos.length + '枚取得 (productId=' + productId + ')');
+    return photos;
+
+  } catch (e) {
+    Logger.log('⚠️ メルカリショップスAPI エラー: ' + e.toString());
+    return null;
+  }
+}
+
+/**
+ * og:image メタタグからメルカリショップス主画像を1枚取得（フォールバック用）
+ *
+ * @param {string} productPageUrl 商品ページ URL
+ * @returns {Array<string>} 画像 URL の配列（最大1件）
+ */
+function _fetchMercariShopsOgImage_(productPageUrl) {
+  try {
+    var response = fetchWithRetry(productPageUrl, {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        'User-Agent':      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ja,en;q=0.9'
+      }
+    });
+
+    if (response.getResponseCode() !== 200) return [];
+
+    var html = response.getContentText('UTF-8');
+    var ogMatch = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/);
+    if (!ogMatch) ogMatch = html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:image"/);
+    if (!ogMatch) return [];
+
+    Logger.log('ℹ️ メルカリショップス: og:image フォールバック → 1枚のみ');
+    return [ogMatch[1]];
+
+  } catch (e) {
+    Logger.log('_fetchMercariShopsOgImageエラー: ' + e.toString());
+    return [];
+  }
+}
+
+/**
+ * メルカリショップス商品ページから全画像 URL を抽出
+ *
+ * 取得方法: api.mercari.jp DPoP 認証 API（全画像取得）→ og:image フォールバック（1枚）
+ * 対応 URL:
+ *   - https://jp.mercari.com/shops/product/{productId}
+ *   - https://mercari-shops.com/products/{productId}（308 リダイレクト → 上記へ）
+ *
+ * @param {string} productPageUrl メルカリショップス商品 URL
+ * @returns {Array<string>} 画像 URL の配列（最大 20 件）
+ */
+function extractMercariShopsImageUrls(productPageUrl) {
+  var idMatch = productPageUrl.match(/\/(?:shops\/product|products)\/([A-Za-z0-9_-]{10,30})/);
+  if (idMatch) {
+    var photos = _fetchMercariShopsPhotos_(idMatch[1]);
+    if (photos && photos.length > 0) {
+      return photos.slice(0, 20);
+    }
+  }
+  return _fetchMercariShopsOgImage_(productPageUrl);
 }
 
 /**
