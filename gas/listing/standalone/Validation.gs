@@ -209,6 +209,17 @@ function translateEbayError(apiErrorMessage, headerMapping) {
         return '売値が不正です' + colInfo + '。正しい金額を入力してください';
       }
     },
+    // 層3: トレカカテゴリ コンディション拒否 (エラー 21920350)
+    {
+      pattern: /Condition information \d+ does not exists|21920350|is not a valid condition for category/i,
+      handler: function() {
+        return 'このカテゴリでは選択したコンディションは使用できません。\n' +
+               'eBayは2023年にトレカカテゴリのコンディション仕様を変更しました。\n' +
+               '【グレード済みカード（PSA・BGS・SGC等）】Grader列とGrade列を入力してください（状態は自動でGradedになります）\n' +
+               '【未グレードカード】Grader列・Grade列を空のままにしてください（状態は自動でUngradedになります）\n' +
+               '→ 修正後、再出品してください';
+      }
+    },
     // 層3: EPS/Self Hosted 混在エラー対訳
     {
       pattern: /mixture.*Self Hosted.*EPS|Self Hosted.*EPS.*not allowed|mixture.*EPS.*Self Hosted/i,
