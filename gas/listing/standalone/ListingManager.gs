@@ -413,6 +413,9 @@ function readListingDataFromSheet(spreadsheetId, rowNumber) {
     title: getValueByHeader(rowData, headerMapping, 'タイトル'),
     condition: getValueByHeader(rowData, headerMapping, '状態'),
     conditionDescription: getValueByHeader(rowData, headerMapping, '状態説明'),
+    grader:     getValueByHeader(rowData, headerMapping, 'Grader'),
+    gradeValue: getValueByHeader(rowData, headerMapping, 'Grade'),
+    certNo:     getValueByHeader(rowData, headerMapping, 'Cert No'),
     description: getValueByHeader(rowData, headerMapping, 'Description'),
     categoryId: getValueByHeader(rowData, headerMapping, 'カテゴリID'),
     brand: getValueByHeader(rowData, headerMapping, 'Brand'),
@@ -519,6 +522,16 @@ function validateListingData(data) {
   // SKU文字数制限（50文字）
   if (data.sku && data.sku.length > 50) {
     errors.push('SKUは50文字以内にしてください');
+  }
+
+  // トレカ鑑定情報バリデーション (Grader/Grade は両方入力 or 両方空)
+  var hasGrader     = data.grader     && String(data.grader).trim()     !== '';
+  var hasGradeValue = data.gradeValue && String(data.gradeValue).trim() !== '';
+  if (hasGrader && !hasGradeValue) {
+    errors.push('Graderが入力されていますがGradeが空です。両方入力してください');
+  }
+  if (!hasGrader && hasGradeValue) {
+    errors.push('Gradeが入力されていますがGraderが空です。両方入力してください');
   }
 
   // Best Offer バリデーション
@@ -1105,8 +1118,12 @@ function reviseFixedPriceItem(spreadsheetId, rowNumber) {
     const listingData = readListingDataFromSheet(spreadsheetId, rowNumber);
     if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId; // 再セット（readListingDataFromSheet内でリセットされる可能性）
 
-    // ConditionID を解決
-    const conditionId = resolveConditionIdFromMaster(listingData.condition, config, listingData.categoryId);
+    // ConditionID を解決（Grader+Grade 両方あれば Graded 2750 に自動確定）
+    const _rvGraderFilled_   = listingData.grader     && String(listingData.grader).trim()     !== '';
+    const _rvGradeValFilled_ = listingData.gradeValue && String(listingData.gradeValue).trim() !== '';
+    const conditionId = (_rvGraderFilled_ && _rvGradeValFilled_)
+      ? '2750'
+      : resolveConditionIdFromMaster(listingData.condition, config, listingData.categoryId);
 
     // XMLリクエスト構築
     let xmlBody =
@@ -1122,6 +1139,11 @@ function reviseFixedPriceItem(spreadsheetId, rowNumber) {
           '<StartPrice currencyID="USD">' + listingData.price + '</StartPrice>' +
           '<Quantity>' + parseInt(listingData.quantity) + '</Quantity>' +
           '<ConditionID>' + conditionId + '</ConditionID>';
+
+    // ConditionDescriptors（Graded 出品の場合）
+    if (conditionId === '2750' && _rvGraderFilled_ && _rvGradeValFilled_) {
+      xmlBody += _buildConditionDescriptorsXml_(listingData.grader, listingData.gradeValue, listingData.certNo);
+    }
 
     // ConditionDescription
     if (listingData.conditionDescription) {
@@ -1458,6 +1480,65 @@ function escapeXml(str) {
     .replace(/'/g, '&apos;');
 }
 
+// ── グレーダー名 → eBay ConditionDescriptor Value ID (Name 27501) ─────────────
+// 出典: https://developer.ebay.com/api-docs/user-guides/static/mip-user-guide/mip-enum-condition-descriptor-ids-for-trading-cards.html
+// 不明なグレーダーは Other (2750123) にフォールバック
+// CGC は eBay のリストに含まれていないため Other に落ちる
+var _GRADER_VALUE_MAP_ = {
+  'PSA':     '275010',
+  'BCCG':    '275011',
+  'BVG':     '275012',
+  'BGS':     '275013',
+  'BECKETT': '275013',
+  'CSG':     '275014',
+  'SGC':     '275016',
+  'KSA':     '275017',
+  'GMA':     '275018',
+  'HGA':     '275019',
+  'ISA':     '2750110',
+  'GSG':     '2750112',
+  'PGS':     '2750113',
+  'MNT':     '2750114',
+  'TAG':     '2750115',
+  'RARE':    '2750116',
+  'RCG':     '2750117',
+  'CGA':     '2750120',
+  'TCG':     '2750121'
+};
+
+/**
+ * ConditionDescriptors XML ブロックを構築する (ConditionID 2750 専用)
+ * @param {string} grader    グレーダー名 (例: 'PSA', 'BGS')
+ * @param {string} gradeValue グレード値 (例: '10', '9.5', 'Authentic')
+ * @param {string} certNo    証明書番号 (任意, 空文字可)
+ * @returns {string} XML 文字列
+ */
+function _buildConditionDescriptorsXml_(grader, gradeValue, certNo) {
+  var graderKey = String(grader).trim().toUpperCase();
+  var graderId  = _GRADER_VALUE_MAP_[graderKey] || '2750123'; // 不明なグレーダーは Other
+  var grade     = String(gradeValue).trim();
+
+  var xml = '<ConditionDescriptors>' +
+    '<ConditionDescriptor>' +
+      '<Name>27501</Name>' +
+      '<Value>' + escapeXml(graderId) + '</Value>' +
+    '</ConditionDescriptor>' +
+    '<ConditionDescriptor>' +
+      '<Name>27502</Name>' +
+      '<Value>' + escapeXml(grade) + '</Value>' +
+    '</ConditionDescriptor>';
+
+  if (certNo && String(certNo).trim() !== '') {
+    xml += '<ConditionDescriptor>' +
+      '<Name>27503</Name>' +
+      '<AdditionalInfo>' + escapeXml(String(certNo).trim()) + '</AdditionalInfo>' +
+    '</ConditionDescriptor>';
+  }
+
+  xml += '</ConditionDescriptors>';
+  return xml;
+}
+
 /**
  * Trading API: AddFixedPriceItem（出品作成）
  *
@@ -1471,11 +1552,18 @@ function addItemWithTradingApi(listingData, policyIds) {
   const apiUrl = getTradingApiUrl();
 
   // ConditionIDを事前解決（インライン呼び出しをやめてエラーを分かりやすくする）
+  const _graderFilled_   = listingData.grader     && String(listingData.grader).trim()     !== '';
+  const _gradeValFilled_ = listingData.gradeValue && String(listingData.gradeValue).trim() !== '';
   let conditionId;
-  try {
-    conditionId = resolveConditionIdFromMaster(listingData.condition, config, listingData.categoryId);
-  } catch (condErr) {
-    return { success: false, message: '状態（コンディション）の解決に失敗しました。\n状態列の値を確認してください。\n詳細: ' + condErr.toString() };
+  if (_graderFilled_ && _gradeValFilled_) {
+    // Grader+Grade 両方入力済み → Graded (2750) に自動確定（状態列より優先）
+    conditionId = '2750';
+  } else {
+    try {
+      conditionId = resolveConditionIdFromMaster(listingData.condition, config, listingData.categoryId);
+    } catch (condErr) {
+      return { success: false, message: '状態（コンディション）の解決に失敗しました。\n状態列の値を確認してください。\n詳細: ' + condErr.toString() };
+    }
   }
 
   // XMLリクエストボディ構築
@@ -1489,7 +1577,14 @@ function addItemWithTradingApi(listingData, policyIds) {
     '<Description><![CDATA[' + (listingData.description || '') + ']]></Description>' +
     '<PrimaryCategory><CategoryID>' + listingData.categoryId + '</CategoryID></PrimaryCategory>' +
     '<StartPrice>' + listingData.price + '</StartPrice>' +
-    '<ConditionID>' + conditionId + '</ConditionID>' +
+    '<ConditionID>' + conditionId + '</ConditionID>';
+
+  // ConditionDescriptors（Graded 出品の場合）
+  if (conditionId === '2750' && _graderFilled_ && _gradeValFilled_) {
+    xmlBody += _buildConditionDescriptorsXml_(listingData.grader, listingData.gradeValue, listingData.certNo);
+  }
+
+  xmlBody +=
     '<Country>JP</Country>' +
     '<Currency>USD</Currency>' +
     '<DispatchTimeMax>3</DispatchTimeMax>' +
