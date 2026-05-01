@@ -44,8 +44,8 @@ function _p256Mn_(a) { return ((a % _P256_N_) + _P256_N_) % _P256_N_; }
 /** 拡張ユークリッド法: a^{-1} mod m */
 function _p256Inv_(a, m) {
   var r0 = ((a % m) + m) % m, r1 = m;
-  var s0 = 1n, s1 = 0n;
-  while (r1 !== 0n) {
+  var s0 = BigInt(1), s1 = BigInt(0);
+  while (r1 !== BigInt(0)) {
     var q  = r0 / r1;
     var r2 = r0 - q * r1;
     var s2 = s0 - q * s1;
@@ -68,8 +68,8 @@ function _p256Add_(P1, P2) {
   if (x1 === x2) {
     if (y1 !== y2) return null;                               // P + (-P) = O
     // 2倍算: λ = (3x² + a) / (2y) mod p
-    var lam2 = _p256Mp_(_p256Mp_(3n * x1 * x1 + _P256_A_) * _p256Inv_(2n * y1, _P256_P_));
-    var x3 = _p256Mp_(lam2 * lam2 - 2n * x1);
+    var lam2 = _p256Mp_(_p256Mp_(BigInt(3) * x1 * x1 + _P256_A_) * _p256Inv_(BigInt(2) * y1, _P256_P_));
+    var x3 = _p256Mp_(lam2 * lam2 - BigInt(2) * x1);
     return [x3, _p256Mp_(lam2 * (x1 - x3) - y1)];
   }
 
@@ -82,10 +82,10 @@ function _p256Add_(P1, P2) {
 /** スカラー倍算 k * P (double-and-add) */
 function _p256ScalarMul_(k, P) {
   var result = null, addend = P;
-  while (k > 0n) {
-    if ((k & 1n) === 1n) result = _p256Add_(result, addend);
+  while (k > BigInt(0)) {
+    if ((k & BigInt(1)) === BigInt(1)) result = _p256Add_(result, addend);
     addend = _p256Add_(addend, addend);
-    k >>= 1n;
+    k >>= BigInt(1);
   }
   return result;
 }
@@ -110,7 +110,7 @@ function _buildMercariShopsDPoP_(method, url) {
   // Utilities.getUuid() (UUID v4) は GAS のセキュアランダムを使用。
   // 2 個 = 256 bit エントロピー → P-256 秘密鍵として十分。
   var raw = BigInt('0x' + Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, ''));
-  var d   = (raw % (_P256_N_ - 1n)) + 1n;   // [1, n-1]
+  var d   = (raw % (_P256_N_ - BigInt(1))) + BigInt(1);   // [1, n-1]
 
   // ── 公開鍵 Q = d * G ─────────────────────────────────────────────────────
   var Q = _p256ScalarMul_(d, [_P256_Gx_, _P256_Gy_]);
@@ -147,12 +147,12 @@ function _buildMercariShopsDPoP_(method, url) {
   var r, s;
   for (var attempt = 0; attempt < 100; attempt++) {
     var kRaw = BigInt('0x' + Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, ''));
-    var k    = (kRaw % (_P256_N_ - 1n)) + 1n;
+    var k    = (kRaw % (_P256_N_ - BigInt(1))) + BigInt(1);
     var R    = _p256ScalarMul_(k, [_P256_Gx_, _P256_Gy_]);
     r = _p256Mn_(R[0]);
-    if (r === 0n) continue;
+    if (r === BigInt(0)) continue;
     s = _p256Mn_(_p256Inv_(k, _P256_N_) * _p256Mn_(e + r * d));
-    if (s !== 0n) break;
+    if (s !== BigInt(0)) break;
   }
 
   // JWS ECDSA 形式: r‖s (各 32 バイト big-endian)
