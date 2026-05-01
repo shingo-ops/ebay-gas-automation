@@ -240,59 +240,182 @@ function extractMercariImageUrls(productPageUrl) {
   }
 }
 
+// ─── メルカリショップス: DPoP認証定数 ───────────────────────────────────────
+// RS256 (RSA-2048) キーペア — GAS は ECDSA 非対応のため RSA を使用
+// api.mercari.jp は RS256 DPoP を受け付けることを実証済み (2026-05-01)
+var _MERCARI_SHOPS_JWK_ = {
+  kty: 'RSA', alg: 'RS256',
+  n: 'onRTQzD3YNUvcJOZ309IKHPEx23UnHnHledD7KnqmBAYk0e_ui_pF7e8vqnXzaDavBfExW6F3p6uQpUSrw5SOGauCsnoFcwRbCCiAQWHKeieLfgBnFmvr0BraQpH_OK8S8X6ii6rOsbNiEcGmgDe6xCx1l9uZM6VA-mQ7p09B_YY3cEhvMDflA47lvYpSzGe-K3xzbB8nKLmz_ToDRBU1FQZjjybBB0ijtYdX_Y5l2DY4aED5fkf-D8bEbzKb6lxykK09q5VEdaLvS6nLS5iuwnIxNyaKgkKTJkiUIlQoqeajy-PoASnsIS1tW91eGCbc478rAAF9mYmKwoDNlIVUQ',
+  e: 'AQAB'
+};
+var _MERCARI_SHOPS_PRIVATE_KEY_ = '-----BEGIN PRIVATE KEY-----\n' +
+  'MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCidFNDMPdg1S9w\n' +
+  'k5nfT0goc8THbdSceceV50PsqeqYEBiTR7+6L+kXt7y+qdfNoNq8F8TFboXenq5C\n' +
+  'lRKvDlI4Zq4KyegVzBFsIKIBBYcp6J4t+AGcWa+vQGtpCkf84rxLxfqKLqs6xs2I\n' +
+  'RwaaAN7rELHWX25kzpUD6ZDunT0H9hjdwSG8wN+UDjuW9ilLMZ74rfHNsHycoubP\n' +
+  '9OgNEFTUVBmOPJsEHSKO1h1f9jmXYNjhoQPl+R/4PxsRvMpvqXHKQrT2rlUR1ou9\n' +
+  'LqctLmK7CcjE3JoqCQpMmSJQiVCip5qPL4+gBKewhLW1b3V4YJtzjvysAAX2ZiYr\n' +
+  'CgM2UhVRAgMBAAECggEAGj0qJp/d0OLWCPuaHo6uY7RBLAnyDX0A7tYd6zeNl9Z/\n' +
+  'tagg0EiFQEqxvmTt4X1R3xACvPXLQwgDsubjj+lC/++bvEvcw8qEZN/Hct1K9cqn\n' +
+  '49pbHj8BKJAB2UMrGe4gRifZveBoUTPDhjecmhq6ZqK5apva14bjXDCpM1UrwqFs\n' +
+  'BEClgqOrK0ksL9nVUNdPyPDB6F177JPmXQMulkCl26YuqhY02R/If7jJG7+ducSH\n' +
+  'jyNzDu3J4s/khfuhqzesqDUxKpTbX6Na0XDTd9heBB5zEaGC2hR8fkuFGsj+3Iql\n' +
+  '0x/8Yy1wVgkmZEWXrBH0muUk7rqz9+K4TpZ5a2WrzQKBgQDOjlioBJy1jwdFWoMB\n' +
+  'd5SeyO1weFygI33F9R65uWRFbyDAjYp1lAq12P8mzi1ERQFKgHkz/AylSCXwy3of\n' +
+  'N+Kdeeag/AqPDMn4+eGG6lNDr5qoD60577pRTi5Kws17gt6weEefwEkanPicUhSX\n' +
+  'MGfNqi5i/rM7qak6m3bDKBmkBQKBgQDJV3ObKm1jPEZR8xjy9HJj9cS0dOKS1e75\n' +
+  'croWkSr44NlyKQhqDbdRfABb9N6x3619OoOtu1X4jFKSPbIBRsAwCvpL9bSc9d+x\n' +
+  'm/ezwkU6fpiOtyqQRjjrHyagMA7tX9ZmivjzWLbXPr3FIYAspC9GgfXSzEh/rRET\n' +
+  '8RGPZW8Z3QKBgQDEY3UJsvDocuf/2dHrSC3nVrTilZ3DqFsCJ0+iWBFtLv6d9TVr\n' +
+  'G2mfgoT9+VPysAVNN5+FfKTtVQ61xlEDc5gkD+3mrBzB6+/wqGz0YMDv/vt1xQn3\n' +
+  'puWoPkQnUtYaE9D1SjcXPbSD+DEsN6JaKWzYj3DxMKdrF6HOFlgxr2PJnQKBgC/d\n' +
+  'VmJg57hbr+vzes7nRfp1htnPn72Alls+5vZOdITOD2OQVavArv/0FrHFuNtYbYoD\n' +
+  'yyIWEw4PbeHOQO8EvtOtCGvecZ2O5ir3BR/64zJQvjvPV5MM3qMmuKwEQMg1rGac\n' +
+  'SyquwGjTRZIDsNDsB0EfzCzc269emVzARohseMkRAoGBAKR9UdToHqDH5BWNZ8Q5\n' +
+  'JgZdMzcrxS6iJkeuG4vXMe+crxagz2AU6UOeDkeLj7qLjPR9+nIR8M8WHV7TmoZH\n' +
+  'IFIHpwzayljeckLX0H1lC5tIRNoggF7Ad4vYK36ooyxPkeR/Kw8HEElsBKI3T3oE\n' +
+  'ePiQjCOtLouUKz1wHD30X4Hp\n' +
+  '-----END PRIVATE KEY-----';
+
 /**
- * メルカリショップス商品ページから画像URLを抽出
+ * メルカリショップス API 用 DPoP JWT を生成 (RS256)
  *
- * 取得方法: og:image メタタグからメイン画像を1枚取得
- * 制限: 追加画像は認証が必要な内部API（api.mercari.jp）で提供されるため取得不可
- * 対応URL:
- *   - https://jp.mercari.com/shops/product/{productId}
- *   - https://mercari-shops.com/products/{productId}（308リダイレクト → 上記へ）
+ * RFC 9449 に準拠。匿名アクセス用 (uuid=all-zeros)。
+ * api.mercari.jp は RS256 DPoP を受け付けることを実証済み (2026-05-01)
  *
- * @param {string} productPageUrl メルカリショップス商品URL
- * @returns {Array<string>} 画像URLの配列（最大1件）
+ * @param {string} method HTTP メソッド ('GET' など)
+ * @param {string} url リクエスト先 URL (クエリ文字列含む完全 URL)
+ * @returns {string} DPoP JWT 文字列
  */
-function extractMercariShopsImageUrls(productPageUrl) {
+function _buildMercariShopsDPoP_(method, url) {
+  function b64url(bytes) {
+    return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, '');
+  }
+
+  var header  = JSON.stringify({ typ: 'dpop+jwt', alg: 'RS256', jwk: _MERCARI_SHOPS_JWK_ });
+  var payload = JSON.stringify({
+    iat:  Math.floor(Date.now() / 1000),
+    jti:  Utilities.getUuid(),
+    htu:  url,
+    htm:  method,
+    uuid: '00000000-0000-0000-0000-000000000000'
+  });
+
+  var headerB64  = b64url(Utilities.newBlob(header).getBytes());
+  var payloadB64 = b64url(Utilities.newBlob(payload).getBytes());
+  var message    = headerB64 + '.' + payloadB64;
+
+  var sigBytes = Utilities.computeRsaSignature(
+    Utilities.RsaAlgorithm.RSA_SHA_256,
+    Utilities.newBlob(message).getBytes(),
+    _MERCARI_SHOPS_PRIVATE_KEY_
+  );
+  return message + '.' + b64url(sigBytes);
+}
+
+/**
+ * メルカリショップス公式 API から全商品画像 URL を取得
+ *
+ * エンドポイント: api.mercari.jp/v1/marketplaces/shops/products/{productId}
+ * レスポンス: productDetail.photos に全画像 URL が入っている
+ *
+ * @param {string} productId 商品 ID
+ * @returns {Array<string>|null} CDN 画像 URL の配列、失敗時は null
+ */
+function _fetchMercariShopsPhotos_(productId) {
+  var apiUrl = 'https://api.mercari.jp/v1/marketplaces/shops/products/' + productId
+    + '?view=FULL&imageType=JPEG';
+
   try {
-    var response = fetchWithRetry(productPageUrl, {
+    var dpop = _buildMercariShopsDPoP_('GET', apiUrl);
+    var response = UrlFetchApp.fetch(apiUrl, {
+      method: 'get',
       muteHttpExceptions: true,
-      followRedirects: true,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'ja,en;q=0.9'
+        'DPoP':         dpop,
+        'X-Platform':   'web',
+        'Accept':       'application/json',
+        'Accept-Language': 'ja,en;q=0.9',
+        'User-Agent':   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
 
     var code = response.getResponseCode();
     if (code !== 200) {
-      Logger.log('⚠️ メルカリショップス: HTTPエラー ' + code);
-      return [];
+      Logger.log('⚠️ メルカリショップスAPI: HTTPエラー ' + code + ' (productId=' + productId + ')');
+      return null;
     }
 
-    var html = response.getContentText('UTF-8');
-
-    // og:image メタタグからメイン画像URLを取得
-    // 属性順 property→content と content→property の両方に対応
-    var ogMatch = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/);
-    if (!ogMatch) {
-      ogMatch = html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:image"/);
+    var json = JSON.parse(response.getContentText('UTF-8'));
+    var photos = json.productDetail && json.productDetail.photos;
+    if (!photos || photos.length === 0) {
+      Logger.log('⚠️ メルカリショップスAPI: photos フィールドが空 (productId=' + productId + ')');
+      return null;
     }
 
-    if (!ogMatch) {
-      Logger.log('⚠️ メルカリショップス: og:image が見つかりませんでした（URL: ' + productPageUrl + '）');
-      return [];
-    }
-
-    var imageUrl = ogMatch[1];
-    Logger.log('✅ メルカリショップス: 主画像取得 ' + imageUrl);
-    Logger.log('ℹ️ メルカリショップス: 追加画像は認証必須APIのため取得不可（1枚のみ）');
-    return [imageUrl];
+    Logger.log('✅ メルカリショップスAPI: ' + photos.length + '枚取得 (productId=' + productId + ')');
+    return photos;
 
   } catch (e) {
-    Logger.log('extractMercariShopsImageUrlsエラー: ' + e.toString());
+    Logger.log('⚠️ メルカリショップスAPI エラー: ' + e.toString());
+    return null;
+  }
+}
+
+/**
+ * og:image メタタグからメルカリショップス主画像を1枚取得（フォールバック用）
+ *
+ * @param {string} productPageUrl 商品ページ URL
+ * @returns {Array<string>} 画像 URL の配列（最大1件）
+ */
+function _fetchMercariShopsOgImage_(productPageUrl) {
+  try {
+    var response = fetchWithRetry(productPageUrl, {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        'User-Agent':      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ja,en;q=0.9'
+      }
+    });
+
+    if (response.getResponseCode() !== 200) return [];
+
+    var html = response.getContentText('UTF-8');
+    var ogMatch = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/);
+    if (!ogMatch) ogMatch = html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:image"/);
+    if (!ogMatch) return [];
+
+    Logger.log('ℹ️ メルカリショップス: og:image フォールバック → 1枚のみ');
+    return [ogMatch[1]];
+
+  } catch (e) {
+    Logger.log('_fetchMercariShopsOgImageエラー: ' + e.toString());
     return [];
   }
+}
+
+/**
+ * メルカリショップス商品ページから全画像 URL を抽出
+ *
+ * 取得方法: api.mercari.jp DPoP 認証 API（全画像取得）→ og:image フォールバック（1枚）
+ * 対応 URL:
+ *   - https://jp.mercari.com/shops/product/{productId}
+ *   - https://mercari-shops.com/products/{productId}（308 リダイレクト → 上記へ）
+ *
+ * @param {string} productPageUrl メルカリショップス商品 URL
+ * @returns {Array<string>} 画像 URL の配列（最大 20 件）
+ */
+function extractMercariShopsImageUrls(productPageUrl) {
+  var idMatch = productPageUrl.match(/\/(?:shops\/product|products)\/([A-Za-z0-9_-]{10,30})/);
+  if (idMatch) {
+    var photos = _fetchMercariShopsPhotos_(idMatch[1]);
+    if (photos && photos.length > 0) {
+      return photos.slice(0, 20);
+    }
+  }
+  return _fetchMercariShopsOgImage_(productPageUrl);
 }
 
 /**
