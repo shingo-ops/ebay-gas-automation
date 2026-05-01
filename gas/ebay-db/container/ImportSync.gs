@@ -716,7 +716,8 @@ function setupHeaders() {
     'marketplace_id', 'category_tree_id', 'category_id', 'category_name',
     'required_specs_json', 'recommended_specs_json', 'optional_specs_json',
     'aspect_values_json', 'aspect_modes_json', 'multi_value_aspects_json',
-    'conditions_json', 'condition_group', 'fvf_rate', 'fvf_note', 'last_synced'
+    'conditions_json', 'condition_group', 'fvf_rate', 'fvf_note', 'last_synced',
+    'descriptor_type'  // 列16: ConditionDescriptors タイプ (PR #46)
   ];
 
   // 新スキーマ: 1グループ1行
@@ -764,7 +765,8 @@ function setupHeadersUS() {
     'marketplace_id', 'category_tree_id', 'category_id', 'category_name',
     'required_specs_json', 'recommended_specs_json', 'optional_specs_json',
     'aspect_values_json', 'aspect_modes_json', 'multi_value_aspects_json',
-    'conditions_json', 'condition_group', 'fvf_rate', 'fvf_note', 'last_synced'
+    'conditions_json', 'condition_group', 'fvf_rate', 'fvf_note', 'last_synced',
+    'descriptor_type'  // 列16: ConditionDescriptors タイプ (PR #46)
   ];
 
   var name  = 'category_master_EBAY_US';
