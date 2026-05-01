@@ -6,8 +6,14 @@ category_master_EBAY_XX.csv と condition_ja_map.csv を生成
 condition_group 設計:
   全カテゴリ・全マーケットの conditions_json を分析し、
   同一の condition_id セットを持つカテゴリを同じグループ（A/B/C...）に分類。
-  - category_master_EBAY_XX.csv に condition_group 列を追加（15列）
+  - category_master_EBAY_XX.csv に condition_group 列を追加（16列）
   - condition_ja_map.csv を 1グループ1行の構造に変更（6列）
+
+descriptor_type 設計 (PR #46):
+  conditions_json に ConditionID 2750 と 4000 を含み、
+  かつ 5000/6000/7000/2500 を含まないカテゴリを "graded_card" と判定。
+  → eBay Trading Card Singles / CCG Individual Cards 等。
+  出品バリデーション時に Grader/Grade または Card Condition の入力を必須化する。
 """
 
 import os
@@ -85,6 +91,26 @@ def is_trading_card_group(ids: frozenset) -> bool:
         {"2750", "4000"}.issubset(ids)
         and not ids.intersection({"5000", "6000", "7000", "2500"})
     )
+
+
+def get_descriptor_type(ids: frozenset) -> str:
+    """conditions_json の id セットから ConditionDescriptors タイプを判定する。
+
+    判定ロジック (is_trading_card_group() を再利用):
+    - 2750 (Graded) AND 4000 (Ungraded) を含む
+    - かつ 5000/6000/7000/2500 を含まない
+    → "graded_card"
+
+    それ以外 → "none"
+
+    根拠: docs/evidence/pr46-evidence.md E1-3, E1-4
+    公式: developer.ebay.com/api-docs/user-guides/static/mip-user-guide/
+          mip-enum-condition-descriptor-ids-for-trading-cards.html
+    対象カテゴリ: 183454 (CCG Individual Cards), 261328/183050 (Trading Card Singles)
+    """
+    if is_trading_card_group(ids):
+        return "graded_card"
+    return "none"
 
 
 def is_apparel_group(ids: frozenset) -> bool:
@@ -202,18 +228,20 @@ def build_condition_groups(
 def generate_category_master(
     rows: list[dict], fvf_rates: dict, row_group_labels: list[str]
 ) -> None:
-    """マーケットプレイスごとに category_master_EBAY_XX.csv を生成（15列）
+    """マーケットプレイスごとに category_master_EBAY_XX.csv を生成（16列）
 
     列定義: marketplace_id, category_tree_id, category_id, category_name,
             required_specs_json, recommended_specs_json, optional_specs_json,
             aspect_values_json, aspect_modes_json, multi_value_aspects_json,
-            conditions_json, condition_group, fvf_rate, fvf_note, last_synced
+            conditions_json, condition_group, fvf_rate, fvf_note, last_synced,
+            descriptor_type
     """
     fieldnames = [
         "marketplace_id", "category_tree_id", "category_id", "category_name",
         "required_specs_json", "recommended_specs_json", "optional_specs_json",
         "aspect_values_json", "aspect_modes_json", "multi_value_aspects_json",
         "conditions_json", "condition_group", "fvf_rate", "fvf_note", "last_synced",
+        "descriptor_type",  # 列16: ConditionDescriptors タイプ (PR #46)
     ]
 
     # マーケットプレイスごとに分類（行インデックスを保持）
@@ -242,6 +270,16 @@ def generate_category_master(
                         fvf_note = info.get("fvf_note", "")
                         break
 
+                # descriptor_type: conditions_json から ConditionDescriptors タイプを判定
+                try:
+                    cond_ids = frozenset(
+                        str(c["id"])
+                        for c in json.loads(row.get("conditions_json", "[]") or "[]")
+                        if isinstance(c, dict) and "id" in c
+                    )
+                except Exception:
+                    cond_ids = frozenset()
+
                 writer.writerow({
                     "marketplace_id":           mp,
                     "category_tree_id":         row.get("category_tree_id", ""),
@@ -258,12 +296,13 @@ def generate_category_master(
                     "fvf_rate":                 fvf_rate,
                     "fvf_note":                 fvf_note,
                     "last_synced":              TODAY,
+                    "descriptor_type":          get_descriptor_type(cond_ids),
                 })
 
         print(f"  {output_path}: {len(indexed_rows)} 行")
         total += len(indexed_rows)
 
-    print(f"category_master_EBAY_*.csv 生成完了: 合計 {total} 行（condition_group列追加）")
+    print(f"category_master_EBAY_*.csv 生成完了: 合計 {total} 行（condition_group + descriptor_type列追加）")
 
 
 def generate_condition_ja_map(group_registry: dict[frozenset, dict]) -> None:

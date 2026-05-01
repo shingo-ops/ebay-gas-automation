@@ -552,18 +552,34 @@ function validateListingData(data) {
     }
   }
 
-  // Brand必須チェック（カテゴリ依存）
+  // カテゴリマスタ参照チェック（Brand必須 + ConditionDescriptors必須）
   // ※ validateListingDataにspreadsheetIdが渡っていない場合は
   //   CURRENT_SPREADSHEET_IDを使用
   try {
     var catData = getCategoryMasterDataForListing(CURRENT_SPREADSHEET_ID, String(data.categoryId));
+
+    // Brand必須チェック
     if (catData && catData.requiredSpecs && catData.requiredSpecs.indexOf('Brand') !== -1) {
       if (!data.brand || String(data.brand).trim() === '') {
         errors.push('Brand（ブランド）が未入力です → Brand列に入力してください');
       }
     }
-  } catch(brandCheckErr) {
-    Logger.log('Brand必須チェックエラー（続行）: ' + brandCheckErr.toString());
+
+    // ConditionDescriptors 必須チェック (PR #46)
+    // descriptor_type = "graded_card" のカテゴリでは
+    // Grader+Grade（鑑定済み）または Card Condition（未鑑定）のいずれかが必須
+    if (catData && catData.descriptorType === 'graded_card') {
+      var hasCardCondition = data.cardCondition && String(data.cardCondition).trim() !== '';
+      if (!hasGrader && !hasGradeValue && !hasCardCondition) {
+        errors.push(
+          'トレカカテゴリ（カテゴリID: ' + String(data.categoryId) + '）の出品には以下のいずれかの入力が必要です:\n' +
+          '  ・鑑定済み: Grader列（PSA / BGS / SGC 等）+ Grade列（10 / 9.5 / 9 等）\n' +
+          '  ・未鑑定: Card Condition列（Near Mint or Better / Excellent / Very Good / Poor）'
+        );
+      }
+    }
+  } catch(catCheckErr) {
+    Logger.log('カテゴリマスタチェックエラー（続行）: ' + catCheckErr.toString());
   }
 
   return errors;
@@ -3227,13 +3243,14 @@ function getCategoryMasterDataForListing(spreadsheetId, categoryId) {
     const headers = data[0];
 
     const idx = {
-      catId:   headers.indexOf('category_id'),
-      catName: headers.indexOf('category_name'),
-      req:     headers.indexOf('required_specs_json'),
-      rec:     headers.indexOf('recommended_specs_json'),
-      opt:     headers.indexOf('optional_specs_json'),
-      aspVal:  headers.indexOf('aspect_values_json'),
-      group:   headers.indexOf('condition_group')
+      catId:    headers.indexOf('category_id'),
+      catName:  headers.indexOf('category_name'),
+      req:      headers.indexOf('required_specs_json'),
+      rec:      headers.indexOf('recommended_specs_json'),
+      opt:      headers.indexOf('optional_specs_json'),
+      aspVal:   headers.indexOf('aspect_values_json'),
+      group:    headers.indexOf('condition_group'),
+      descType: headers.indexOf('descriptor_type')  // PR #46
     };
 
     if (idx.catId === -1) {
@@ -3248,12 +3265,13 @@ function getCategoryMasterDataForListing(spreadsheetId, categoryId) {
       if (String(data[i][idx.catId]) === String(categoryId)) {
         return {
           categoryId:       String(data[i][idx.catId]),
-          categoryName:     idx.catName !== -1 ? String(data[i][idx.catName] || '') : '',
-          requiredSpecs:    idx.req    !== -1 ? parseArr(data[i][idx.req])    : [],
-          recommendedSpecs: idx.rec    !== -1 ? parseArr(data[i][idx.rec])    : [],
-          optionalSpecs:    idx.opt    !== -1 ? parseArr(data[i][idx.opt])    : [],
-          aspectValues:     idx.aspVal !== -1 ? parseObj(data[i][idx.aspVal]) : {},
-          conditionGroup:   idx.group  !== -1 ? String(data[i][idx.group] || '') : ''
+          categoryName:     idx.catName  !== -1 ? String(data[i][idx.catName]  || '') : '',
+          requiredSpecs:    idx.req      !== -1 ? parseArr(data[i][idx.req])         : [],
+          recommendedSpecs: idx.rec      !== -1 ? parseArr(data[i][idx.rec])         : [],
+          optionalSpecs:    idx.opt      !== -1 ? parseArr(data[i][idx.opt])         : [],
+          aspectValues:     idx.aspVal   !== -1 ? parseObj(data[i][idx.aspVal])      : {},
+          conditionGroup:   idx.group    !== -1 ? String(data[i][idx.group]    || '') : '',
+          descriptorType:   idx.descType !== -1 ? String(data[i][idx.descType] || 'none') : 'none'  // PR #46
         };
       }
     }
