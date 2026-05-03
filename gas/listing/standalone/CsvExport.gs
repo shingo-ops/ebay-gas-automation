@@ -10,11 +10,11 @@ const SELLSTA_CSV_HEADERS = [
   'image_url7','image_url8','image_url9','image_url10','image_url11','image_url12',
   'image_url13','image_url14','image_url15','image_url16','image_url17','image_url18',
   'image_url19','image_url20','image_url21','image_url22','image_url23','image_url24',
-  '①仕入れ先情報','②仕入れ先情報','③仕入れ先情報',
+  '①仕入先情報','②仕入先情報','③仕入先情報',
   'Custom label (SKU)','Condition','Condition description',
   'Item Code type','Item Code','CategoryID','Item Specifics',
   'ListingType','Duration','Selling Price',
-  'Best Offers (accept offers of at least)','Best Offers (decline offers lower than)',
+  'Best Offers（accept offers of at least）','Best Offers（decline offers lower than）',
   'Quantity','Store Category','Shipping Policy','Payment Policy','Return Policy',
   'Private Listing','Description','listing_date','Memo','Custom Link'
 ];
