@@ -333,9 +333,13 @@ function buildImageUrls(disp, dbMap) {
 
 function buildItemSpecifics(disp, dbMap) {
   const parts = [];
+  // Brand列を先頭に追加 (クレーム2修正: buildItemSpecificsはBrand列を参照しないバグの修正)
+  const brand = getCellDisplay(disp, dbMap, 'Brand').trim().replace(/&/g, 'and');
+  if (brand) parts.push('Brand:' + brand);
+  // & を "and" に置換 (クレーム3修正: セルスタCSVはXMLではないため&amp;ではなく"and"で対応)
   for (let i = 1; i <= 30; i++) {
-    const key = getCellDisplay(disp, dbMap, '項目名（' + i + '）').trim();
-    const val = getCellDisplay(disp, dbMap, '内容（' + i + '）').trim();
+    const key = getCellDisplay(disp, dbMap, '項目名（' + i + '）').trim().replace(/&/g, 'and');
+    const val = getCellDisplay(disp, dbMap, '内容（' + i + '）').trim().replace(/&/g, 'and');
     if (key) parts.push(key + ':' + val);
   }
   return parts.join(',');
