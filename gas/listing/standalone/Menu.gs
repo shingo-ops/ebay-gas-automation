@@ -203,29 +203,6 @@ function menuCreateListing(spreadsheetId, rowNumber) {
 }
 
 /**
- * 【Best offerプルダウン設定】
- * 出品シートの「Best offer」列に ON / OFF プルダウンを設定
- *
- * @param {string} spreadsheetId スプレッドシートID（省略時はデフォルト使用）
- * @returns {Object} { success: boolean, message: string }
- */
-function menuSetupBestOfferDropdown(spreadsheetId) {
-  try {
-    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
-    return setupBestOfferDropdown(spreadsheetId);
-  } catch (error) {
-    Logger.log('❌ Best offerプルダウン設定エラー: ' + error.toString());
-    return {
-      success: false,
-      error: error.toString(),
-      message: '❌ Best offerプルダウン設定エラー:\n\n' + error.toString()
-    };
-  } finally {
-    CURRENT_SPREADSHEET_ID = null;
-  }
-}
-
-/**
  * 設定確認（ログ出力）
  *
  * @param {string} spreadsheetId スプレッドシートID（省略時はデフォルト使用）
