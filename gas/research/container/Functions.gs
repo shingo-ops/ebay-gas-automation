@@ -843,6 +843,21 @@ function transferListingDataWithPolicy(policyRow, policyLabel) {
       }
     }
 
+    // 出品シートの Best offer列にON/OFFプルダウンを設定
+    const bestOfferColNum = getColumnByHeader(headerMapping, LISTING_COLUMNS.BEST_OFFER.header);
+    if (bestOfferColNum) {
+      try {
+        const bestOfferRule = SpreadsheetApp.newDataValidation()
+          .requireValueInList(['ON', 'OFF'], true)
+          .setAllowInvalid(false)
+          .build();
+        listingSheet.getRange(newRow, bestOfferColNum).setDataValidation(bestOfferRule);
+        Logger.log('✅ 出品シートのBest offer列にプルダウン設定完了');
+      } catch (dropdownErr) {
+        Logger.log('⚠️ Best offerプルダウン設定失敗（無視）: ' + dropdownErr.toString());
+      }
+    }
+
     // Item Specificsの項目名に色を一括設定（色グループでバッチ処理）
     Logger.log('色設定開始: ' + specColors.length + '個');
     const colorGroups_ = {};
