@@ -232,49 +232,6 @@ function updateKanriYmDropdown(spreadsheetId) {
 }
 
 /**
- * 出品シートの「Best offer」列に ON / OFF プルダウンを設定
- * @param {string} spreadsheetId 出品スプレッドシートID
- * @returns {{ success: boolean, message: string }}
- */
-function setupBestOfferDropdown(spreadsheetId) {
-  try {
-    Logger.log('=== Best offerプルダウン設定開始 ===');
-    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
-
-    const listingSheet = getTargetSpreadsheet().getSheetByName(SHEET_NAMES.LISTING);
-    if (!listingSheet) {
-      return { success: false, message: '「' + SHEET_NAMES.LISTING + '」シートが見つかりません。' };
-    }
-
-    const headerMapping = buildHeaderMapping();
-    const bestOfferCol = headerMapping['Best offer'];
-    if (!bestOfferCol) {
-      return { success: false, message: '「Best offer」列が見つかりません。ヘッダー行を確認してください。' };
-    }
-
-    const maxRows = listingSheet.getMaxRows();
-    const rule = SpreadsheetApp.newDataValidation()
-      .requireValueInList(['ON', 'OFF'], true)
-      .setAllowInvalid(false)
-      .build();
-
-    listingSheet.getRange(2, bestOfferCol, maxRows - 1, 1).setDataValidation(rule);
-
-    Logger.log('✅ Best offerプルダウン設定完了: ' + (maxRows - 1) + '行 / 列' + bestOfferCol);
-    return {
-      success: true,
-      message: '✅ 「Best offer」列にON/OFFプルダウンを設定しました（' + (maxRows - 1) + '行）。'
-    };
-
-  } catch (e) {
-    Logger.log('❌ Best offerプルダウン設定エラー: ' + e.toString());
-    return { success: false, message: 'エラー: ' + e.toString() };
-  } finally {
-    CURRENT_SPREADSHEET_ID = null;
-  }
-}
-
-/**
  * 報酬計算メイン処理
  * 報酬管理シートA2の管理年月をもとに出品DBから作業件数を集計して出力
  * @param {string} spreadsheetId 出品スプレッドシートID

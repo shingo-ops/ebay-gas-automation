@@ -2204,6 +2204,21 @@ function transferToOutputDb(spreadsheetId, rowNumber, listingData, result) {
     Logger.log('出品DB書き込み行: ' + newRow + '行目');
     outputSheet.getRange(newRow, 1, 1, outputRow.length).setValues([outputRow]);
 
+    // 出品DBのBest offer列にON/OFFプルダウンを設定
+    const bestOfferIdxInOutput = outputColMap['Best offer'];
+    if (bestOfferIdxInOutput !== undefined) {
+      try {
+        const bestOfferRule = SpreadsheetApp.newDataValidation()
+          .requireValueInList(['ON', 'OFF'], true)
+          .setAllowInvalid(false)
+          .build();
+        outputSheet.getRange(newRow, bestOfferIdxInOutput + 1).setDataValidation(bestOfferRule);
+        Logger.log('✅ 出品DBのBest offer列にプルダウン設定完了');
+      } catch (dropdownErr) {
+        Logger.log('⚠️ 出品DB Best offerプルダウン設定失敗（無視）: ' + dropdownErr.toString());
+      }
+    }
+
     Logger.log('✅ 出品DB転記完了: ' + newRow + '行目に追加');
 
     const missingCols = [];
