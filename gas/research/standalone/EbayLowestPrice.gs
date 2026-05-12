@@ -1,12 +1,27 @@
 /**
- * eBay from Japan 最安値検索ツール
+ * eBay from Japan 最安値検索ツール（スタンドアロン版）
  * Browse APIを使わず全てUrlFetchApp HTMLスクレイピングで実現
  *
  * シート構成:
- *   設定 (LP_SHEET.SETTINGS) : A列=キーワード、C1=フォールバック("ON"で有効)
- *   結果 (LP_SHEET.RESULTS)  : 検索結果出力先
- *   ログ (LP_SHEET.LOG)      : 実行ログ
+ *   設定 : A列=キーワードまたはeBay検索URL（A1ヘッダー、A2以降データ）
+ *           B1=eBay App ID（Browse APIフォールバック用・任意）
+ *           B2=eBay Cert ID（Browse APIフォールバック用・任意）
+ *           C1="ON" にするとBrowse APIフォールバックを有効化
+ *   結果 : 検索結果出力先
+ *   ログ : 実行ログ
  */
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// スプレッドシート取得ヘルパー（Phase 4: グローバルss除去）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * LP 機能用スプレッドシート取得
+ * CURRENT_SPREADSHEET_ID (Config.gs で管理) を使用する
+ */
+function lpGetSpreadsheet_() {
+  return getTargetSpreadsheetResearch(CURRENT_SPREADSHEET_ID);
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 定数
@@ -19,15 +34,15 @@ const LP_SHEET = {
 };
 
 const LP_CONDITIONS = [
-  { id: '1000', label: '新品/未使用',        group: '新品' },
-  { id: '2750', label: 'ほぼ新品',            group: '中古' },
+  { id: '1000', label: '新品/未使用',         group: '新品' },
+  { id: '2750', label: 'ほぼ新品',             group: '中古' },
   { id: '2990', label: '目立った傷や汚れなし', group: '中古' },
   { id: '3000', label: '目立った傷や汚れなし', group: '中古' },
-  { id: '3010', label: '傷や汚れあり',         group: '中古' },
-  { id: '4000', label: 'やや傷や汚れあり',     group: '中古' },
-  { id: '5000', label: '傷や汚れあり',         group: '中古' },
-  { id: '6000', label: '全体的に状態が悪い',   group: '中古' },
-  { id: '7000', label: 'ジャンク品',           group: '中古' },
+  { id: '3010', label: '傷や汚れあり',          group: '中古' },
+  { id: '4000', label: 'やや傷や汚れあり',      group: '中古' },
+  { id: '5000', label: '傷や汚れあり',          group: '中古' },
+  { id: '6000', label: '全体的に状態が悪い',    group: '中古' },
+  { id: '7000', label: 'ジャンク品',            group: '中古' },
 ];
 
 // 結果シート列インデックス（1-based）
@@ -57,7 +72,7 @@ const LP_RESULTS_HEADER = [
   '商品リンク', '検索URL',
 ];
 
-const LP_MAX_DAILY_REQUESTS  = 100;
+const LP_MAX_DAILY_REQUESTS   = 100;
 const LP_MAX_KEYWORDS_PER_RUN = 6;
 const LP_TIMEOUT_MS           = 330 * 1000; // 330秒
 
@@ -92,8 +107,11 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('eBay最安値検索')
     .addItem('▶ 今すぐ実行（全キーワード）', 'runAllLowestPrice')
+    .addSeparator()
     .addItem('⏰ 毎日9時に自動実行', 'setupDailyLowestPriceTrigger')
-    .addItem('🗑 自動実行を解除', 'removeDailyLowestPriceTrigger')
+    .addItem('🗑 自動実行を解除',     'removeDailyLowestPriceTrigger')
+    .addSeparator()
+    .addItem('⚙ 初回設定（トリガー登録）', 'setupLowestPriceTrigger')
     .addToUi();
 }
 
@@ -102,22 +120,20 @@ function onOpen() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * handleEditLowestPriceをインストール可能onEditトリガーとして登録
- * completeInitialSetup（Setup.gs）の setupOnEditTrigger() から呼ばれる
+ * handleEditLowestPrice をインストール可能 onEdit トリガーとして登録
+ * メニュー「⚙ 初回設定」から実行する
  */
 function setupLowestPriceTrigger(spreadsheetId) {
   const spreadsheet = getTargetSpreadsheetResearch(spreadsheetId);
-  // 既存の handleEditLowestPrice トリガーを削除
   ScriptApp.getUserTriggers(spreadsheet).forEach(function(t) {
-    if (t.getHandlerFunction() === 'handleEditLowestPrice') {
-      ScriptApp.deleteTrigger(t);
-    }
+    if (t.getHandlerFunction() === 'handleEditLowestPrice') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('handleEditLowestPrice')
     .forSpreadsheet(spreadsheet)
     .onEdit()
     .create();
   writeLog('handleEditLowestPriceトリガー登録完了');
+  SpreadsheetApp.getUi().alert('✅ onEditトリガーを登録しました');
 }
 
 /**
@@ -127,9 +143,7 @@ function setupDailyLowestPriceTrigger(spreadsheetId) {
   const spreadsheet = getTargetSpreadsheetResearch(spreadsheetId);
   ScriptApp.getUserTriggers(spreadsheet).forEach(function(t) {
     if (t.getHandlerFunction() === 'runAllLowestPrice' &&
-        t.getEventType() === ScriptApp.EventType.CLOCK) {
-      ScriptApp.deleteTrigger(t);
-    }
+        t.getEventType() === ScriptApp.EventType.CLOCK) ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('runAllLowestPrice')
     .timeBased()
@@ -149,10 +163,7 @@ function removeDailyLowestPriceTrigger(spreadsheetId) {
   let removed = 0;
   ScriptApp.getUserTriggers(spreadsheet).forEach(function(t) {
     if (t.getHandlerFunction() === 'runAllLowestPrice' &&
-        t.getEventType() === ScriptApp.EventType.CLOCK) {
-      ScriptApp.deleteTrigger(t);
-      removed++;
-    }
+        t.getEventType() === ScriptApp.EventType.CLOCK) { ScriptApp.deleteTrigger(t); removed++; }
   });
   SpreadsheetApp.getUi().alert(removed > 0 ? '✅ 自動実行を解除しました' : '⚠️ 自動実行が設定されていません');
   writeLog('毎日9時の自動実行トリガー削除: ' + removed + '件');
@@ -163,12 +174,11 @@ function removeDailyLowestPriceTrigger(spreadsheetId) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * 設定シートのA列（キーワード）に入力された時に発火
- * 関数名をonEditにしない（handleEditとの二重発火防止）
+ * 設定シートのA列にキーワード/URLが入力された時に発火
+ * 関数名を onEdit にしない（二重発火防止）
  */
 function handleEditLowestPrice(e) {
   if (!e) return;
-
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(0)) {
     Logger.log('他の処理が実行中のためスキップ (handleEditLowestPrice)');
@@ -180,21 +190,63 @@ function handleEditLowestPrice(e) {
 
     const editedCol = e.range.getColumn();
     const editedRow = e.range.getRow();
-
-    // A列（キーワード列）、2行目以降のみ対象
     if (editedCol !== 1 || editedRow < 2) return;
 
-    const keyword = String(e.range.getValue()).trim();
-    if (!keyword) return;
+    const input = String(e.range.getValue()).trim();
+    if (!input) return;
 
-    writeLog('onEdit発火: "' + keyword + '" (行' + editedRow + ')');
-    lpSearchKeyword(keyword, Date.now());
+    writeLog('onEdit発火: "' + input.substring(0, 80) + '" (行' + editedRow + ')');
+    lpSearchKeyword(input, Date.now());
 
   } catch (err) {
     writeLog('handleEditLowestPrice エラー: ' + err.toString());
   } finally {
     lock.releaseLock();
   }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 入力値パース（URL or キーワード）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * A列の入力値を解析してキーワード・カテゴリを取得
+ *
+ * キーワード直接入力例: "pokemon booster box"
+ *   → { keyword: "pokemon booster box", sacat: "0", displayName: "pokemon booster box" }
+ *
+ * eBay検索URL入力例:
+ *   "https://www.ebay.com/sch/i.html?_nkw=pokemon+booster+box&_sacat=2536&LH_BIN=1&..."
+ *   → { keyword: "pokemon booster box", sacat: "2536", displayName: "pokemon booster box (cat:2536)" }
+ *
+ * @param {string} input A列の値
+ * @returns {{keyword: string, sacat: string, displayName: string}}
+ */
+function lpParseInput(input) {
+  const trimmed = input.trim();
+
+  // eBay URLでなければキーワード直接入力
+  if (trimmed.indexOf('ebay.com') === -1) {
+    return { keyword: trimmed, sacat: '0', displayName: trimmed };
+  }
+
+  // _nkw パラメータを抽出（+ は空白に変換、%xx はデコード）
+  const nkwMatch = trimmed.match(/[?&]_nkw=([^&]+)/);
+  const keyword  = nkwMatch
+    ? decodeURIComponent(nkwMatch[1].replace(/\+/g, ' '))
+    : '';
+
+  // _sacat パラメータを抽出
+  const sacatMatch = trimmed.match(/[?&]_sacat=([^&]+)/);
+  const sacat      = sacatMatch ? sacatMatch[1] : '0';
+
+  // 表示名: "キーワード (cat:カテゴリID)" 形式（カテゴリが 0 でなければ付記）
+  const base        = keyword || trimmed.substring(0, 60);
+  const displayName = (sacat && sacat !== '0')
+    ? base + ' (cat:' + sacat + ')'
+    : base;
+
+  return { keyword: base, sacat: sacat, displayName: displayName };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -213,51 +265,40 @@ function runAllLowestPrice() {
   try {
     lpInitSheets();
 
-    const settingsSheet = ss.getSheetByName(LP_SHEET.SETTINGS);
-    if (!settingsSheet) {
-      SpreadsheetApp.getUi().alert('「設定」シートが見つかりません');
-      return;
-    }
+    const settingsSheet = lpGetSpreadsheet_().getSheetByName(LP_SHEET.SETTINGS);
+    if (!settingsSheet) { SpreadsheetApp.getUi().alert('「設定」シートが見つかりません'); return; }
 
     const lastRow = settingsSheet.getLastRow();
-    if (lastRow < 2) {
-      SpreadsheetApp.getUi().alert('設定シートのA2以降にキーワードを入力してください');
-      return;
-    }
+    if (lastRow < 2) { SpreadsheetApp.getUi().alert('設定シートのA2以降にキーワードを入力してください'); return; }
 
-    const allKeywords = settingsSheet
+    const allInputs = settingsSheet
       .getRange(2, 1, lastRow - 1, 1)
       .getValues()
       .map(function(r) { return String(r[0]).trim(); })
       .filter(function(k) { return k !== ''; });
 
-    if (allKeywords.length === 0) {
-      SpreadsheetApp.getUi().alert('有効なキーワードがありません');
-      return;
-    }
+    if (allInputs.length === 0) { SpreadsheetApp.getUi().alert('有効なキーワードがありません'); return; }
 
-    // バッチ進捗を取得（前回中断分の続き）
+    // バッチ進捗（前回中断分の続き）
     const props = PropertiesService.getScriptProperties();
     let startIndex = 0;
     const saved = props.getProperty('LP_BATCH_PROGRESS');
     if (saved) {
       try {
-        const progress = JSON.parse(saved);
-        if (progress.totalCount === allKeywords.length) {
-          startIndex = progress.completedCount || 0;
-        }
+        const p = JSON.parse(saved);
+        if (p.totalCount === allInputs.length) startIndex = p.completedCount || 0;
       } catch (e_) { /* 無視 */ }
     }
-    if (startIndex >= allKeywords.length) startIndex = 0;
+    if (startIndex >= allInputs.length) startIndex = 0;
 
-    const startTime = Date.now();
-    const totalCount = allKeywords.length;
+    const startTime    = Date.now();
+    const totalCount   = allInputs.length;
     let completedCount = startIndex;
 
-    writeLog('実行開始: ' + totalCount + '件のキーワード（' + startIndex + '件目から）');
+    writeLog('実行開始: ' + totalCount + '件（' + startIndex + '件目から）');
 
-    for (let i = startIndex; i < allKeywords.length; i++) {
-      // タイムアウトチェック
+    for (let i = startIndex; i < allInputs.length; i++) {
+      // タイムアウトチェック（330秒）
       if (Date.now() - startTime > LP_TIMEOUT_MS) {
         props.setProperty('LP_BATCH_PROGRESS', JSON.stringify({ totalCount: totalCount, completedCount: completedCount }));
         writeLog('タイムアウト間近: ' + completedCount + '/' + totalCount + '件完了で打ち切り');
@@ -269,10 +310,10 @@ function runAllLowestPrice() {
         return;
       }
 
-      // バッチ上限チェック（1バッチあたり最大6キーワード）
+      // バッチ上限チェック
       if (i - startIndex >= LP_MAX_KEYWORDS_PER_RUN) {
         props.setProperty('LP_BATCH_PROGRESS', JSON.stringify({ totalCount: totalCount, completedCount: completedCount }));
-        writeLog('バッチ上限(' + LP_MAX_KEYWORDS_PER_RUN + '件)到達。続きは再実行してください。');
+        writeLog('バッチ上限(' + LP_MAX_KEYWORDS_PER_RUN + '件)到達');
         SpreadsheetApp.getUi().alert(
           'バッチ完了',
           completedCount + '/' + totalCount + '件完了（' + LP_MAX_KEYWORDS_PER_RUN + '件/バッチ上限）。\n残りはメニューから再実行してください。',
@@ -281,12 +322,12 @@ function runAllLowestPrice() {
         return;
       }
 
-      const keyword = allKeywords[i];
-      writeLog('検索開始: "' + keyword + '" (' + (i + 1) + '/' + totalCount + ')');
+      const input = allInputs[i];
+      writeLog('検索開始: "' + input.substring(0, 60) + '" (' + (i + 1) + '/' + totalCount + ')');
       try {
-        lpSearchKeyword(keyword, startTime);
+        lpSearchKeyword(input, startTime);
       } catch (err) {
-        writeLog('キーワードエラー "' + keyword + '": ' + err.toString());
+        writeLog('キーワードエラー: ' + err.toString());
       }
       completedCount++;
     }
@@ -301,25 +342,32 @@ function runAllLowestPrice() {
 }
 
 /**
- * 1キーワードに対して全コンディションの最安値を検索
- * @param {string} keyword キーワードまたはeBay検索URL
+ * 1件のキーワード/URLに対して全コンディションの最安値を検索
+ * @param {string} input A列の値（キーワードまたはeBay検索URL）
  * @param {number} startTime 実行開始時刻 (Date.now())
  */
-function lpSearchKeyword(keyword, startTime) {
-  const exchangeRate = lpGetExchangeRate();
+function lpSearchKeyword(input, startTime) {
+  const parsed      = lpParseInput(input);
+  const keyword     = parsed.keyword;
+  const sacat       = parsed.sacat;
+  const displayName = parsed.displayName;
+
+  writeLog('解析結果: keyword="' + keyword + '" sacat=' + sacat + ' display="' + displayName + '"');
+
+  const exchangeRate      = lpGetExchangeRate();
   const isFallbackEnabled = lpIsFallbackEnabled();
-  const rows = [];
+  const rows              = [];
 
   for (let i = 0; i < LP_CONDITIONS.length; i++) {
     const cond = LP_CONDITIONS[i];
 
     // タイムアウトチェック
     if (startTime && Date.now() - startTime > LP_TIMEOUT_MS) {
-      writeLog('lpSearchKeyword: タイムアウトにより中断 (cond=' + cond.id + ')');
+      writeLog('タイムアウトにより中断 (cond=' + cond.id + ')');
       break;
     }
 
-    const searchUrl = lpBuildUrl(keyword, cond.id);
+    const searchUrl = lpBuildUrl(keyword, cond.id, sacat);
 
     // 日次リクエスト上限チェック
     if (!lpCheckRequestLimit()) {
@@ -336,7 +384,7 @@ function lpSearchKeyword(keyword, startTime) {
     lpIncrementRequestCount();
 
     if (html === null) {
-      writeLog('取得失敗（全リトライ失敗）: cond=' + cond.id + ' keyword=' + keyword);
+      writeLog('取得失敗（全リトライ失敗）: cond=' + cond.id);
       rows.push({ cond: cond, status: 'FETCH_FAILED', searchUrl: searchUrl });
       Utilities.sleep(2000 + Math.random() * 2000);
       continue;
@@ -345,7 +393,6 @@ function lpSearchKeyword(keyword, startTime) {
     const items = lpParseItems(html);
 
     if (items === null) {
-      // パーサー破損
       writeLog('パーサー破損の可能性：HTMLにs-itemが存在するがパース結果0件 [cond=' + cond.id + ']');
       rows.push({ cond: cond, status: 'PARSE_FAILED', searchUrl: searchUrl });
       Utilities.sleep(2000 + Math.random() * 2000);
@@ -384,26 +431,22 @@ function lpSearchKeyword(keyword, startTime) {
       }
     }
 
-    const shipUsd    = lowestItem.shippingUsd;
-    const totalUsd   = lowestItem.priceUsd + (shipUsd !== null ? shipUsd : 0);
-    const totalJpy   = shipUsd !== null ? Math.round(totalUsd * exchangeRate) : null;
+    const shipUsd  = lowestItem.shippingUsd;
+    const totalUsd = lowestItem.priceUsd + (shipUsd !== null ? shipUsd : 0);
+    const totalJpy = shipUsd !== null ? Math.round(totalUsd * exchangeRate) : null;
 
     rows.push({
-      cond: cond,
-      status: 'OK',
+      cond: cond, status: 'OK',
       item: lowestItem,
-      totalUsd: totalUsd,
-      totalJpy: totalJpy,
-      descEn: descEn,
-      descJa: descJa,
+      totalUsd: totalUsd, totalJpy: totalJpy,
+      descEn: descEn, descJa: descJa,
       searchUrl: searchUrl,
     });
 
-    // リクエスト間隔: 2〜4秒
     Utilities.sleep(2000 + Math.random() * 2000);
   }
 
-  lpWriteResults(keyword, rows, exchangeRate);
+  lpWriteResults(displayName, rows, exchangeRate);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -412,21 +455,14 @@ function lpSearchKeyword(keyword, startTime) {
 
 /**
  * eBay検索URLを構築（from Japan固定）
+ * @param {string} keyword  検索キーワード
+ * @param {string} conditionId コンディションID
+ * @param {string} sacat    カテゴリID（"0" = 全カテゴリ）
  */
-function lpBuildUrl(keyword, conditionId) {
-  // 既存のeBay URLが渡された場合はconditionIdだけ差し替える
-  if (keyword.indexOf('ebay.com') !== -1) {
-    let url = keyword;
-    if (/LH_ItemCondition=\d+/.test(url)) {
-      url = url.replace(/LH_ItemCondition=\d+/, 'LH_ItemCondition=' + conditionId);
-    } else {
-      url += '&LH_ItemCondition=' + conditionId;
-    }
-    return url;
-  }
+function lpBuildUrl(keyword, conditionId, sacat) {
   const params = [
-    '_nkw='            + encodeURIComponent(keyword),
-    '_sacat=0',
+    '_nkw='             + encodeURIComponent(keyword),
+    '_sacat='           + (sacat || '0'),
     'LH_BIN=1',
     'LH_ItemCondition=' + conditionId,
     '_sop=15',
@@ -447,22 +483,25 @@ function lpGetRandomUA() {
 function lpGetRequestHeaders() {
   return {
     'User-Agent':                lpGetRandomUA(),
-    'Accept':                    'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept':                    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     'Accept-Language':           'en-US,en;q=0.9',
     'Accept-Encoding':           'gzip, deflate, br',
     'Cache-Control':             'no-cache',
     'Pragma':                    'no-cache',
     'Referer':                   'https://www.ebay.com/',
+    'sec-ch-ua':                 '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    'sec-ch-ua-mobile':          '?0',
+    'sec-ch-ua-platform':        '"Windows"',
     'Sec-Fetch-Dest':            'document',
     'Sec-Fetch-Mode':            'navigate',
     'Sec-Fetch-Site':            'same-origin',
+    'Sec-Fetch-User':            '?1',
     'Upgrade-Insecure-Requests': '1',
   };
 }
 
 /**
  * eBayページをフェッチ（成功時は1時間キャッシュ）
- * @returns {string|null}
  */
 function lpFetchEbayPage(url) {
   const cache    = CacheService.getScriptCache();
@@ -479,7 +518,7 @@ function lpFetchEbayPage(url) {
 
     if (code === 200) {
       const html = response.getContentText();
-      try { cache.put(cacheKey, html.substring(0, 100000), 3600); } catch (e_) { /* キャッシュサイズ超過は無視 */ }
+      try { cache.put(cacheKey, html.substring(0, 100000), 3600); } catch (e_) { /* サイズ超過は無視 */ }
       return html;
     }
 
@@ -504,11 +543,6 @@ function lpFetchEbayPage(url) {
 
 /**
  * 指数バックオフリトライ付きフェッチ
- * @param {string} url
- * @param {number} maxRetries
- * @param {string|null} conditionId フォールバック用（null=無効）
- * @param {string|null} keyword     フォールバック用
- * @returns {string|null}
  */
 function lpFetchWithRetry(url, maxRetries, conditionId, keyword) {
   let consecutiveFails = 0;
@@ -517,8 +551,6 @@ function lpFetchWithRetry(url, maxRetries, conditionId, keyword) {
     if (html !== null) return html;
 
     consecutiveFails++;
-
-    // 503が3回連続 → Browse APIフォールバック
     if (consecutiveFails >= 3 && conditionId && keyword) {
       writeLog('503が3回連続 → Browse APIフォールバックを試みます');
       return lpBrowseFallback(keyword, conditionId);
@@ -533,7 +565,6 @@ function lpFetchWithRetry(url, maxRetries, conditionId, keyword) {
 
 /**
  * 商品個別ページをフェッチ（コンディション詳細取得用）
- * @returns {string|null}
  */
 function lpFetchItemPage(itemUrl) {
   try {
@@ -558,99 +589,211 @@ function lpFetchItemPage(itemUrl) {
  * @returns {Array|null} アイテム配列。パーサー破損時はnull
  */
 function lpParseItems(html) {
-  const hasSItem = html.indexOf('s-item') !== -1;
-  const itemPattern = /<li[^>]+class="[^"]*s-item[^"]*"[^>]*>([\s\S]*?)<\/li>/g;
-  const items = [];
-  let match;
+  // ── 構造フラグ確認 ──
+  const hasSItem     = html.indexOf('s-item') !== -1;
+  const hasSCard     = html.indexOf('s-card') !== -1;
+  const hasVertical  = html.indexOf('s-card--vertical') !== -1;
+  const hasSrp       = html.indexOf('srp-results') !== -1;
+  const hasListingId = html.indexOf('data-listingid') !== -1;
+  Logger.log('[lpParseItems] 構造フラグ: s-item=' + hasSItem +
+    ' s-card=' + hasSCard + ' s-card--vertical=' + hasVertical +
+    ' srp-results=' + hasSrp + ' data-listingid=' + hasListingId);
 
-  while ((match = itemPattern.exec(html)) !== null) {
-    const item = lpParseItemBlock(match[1]);
+  // ── ブロック分割（優先順: s-card--vertical > s-card > s-item） ──
+  const MARKERS = [
+    'class="s-card s-card--vertical"',  // 現行構造（2026年4月）
+    "class='s-card s-card--vertical'",  // シングルクォート変形
+    'class="s-card"',                   // 中間構造
+    'class="s-item"',                   // 旧構造
+  ];
+
+  let liPositions = [];
+  for (let m = 0; m < MARKERS.length; m++) {
+    const marker = MARKERS[m];
+    let pos = 0;
+    const tmp = [];
+    while (true) {
+      const idx = html.indexOf(marker, pos);
+      if (idx < 0) break;
+      const liIdx = html.lastIndexOf('<li', idx);
+      if (liIdx >= 0) tmp.push(liIdx);
+      pos = idx + marker.length;
+    }
+    if (tmp.length > 0) {
+      // 重複除去
+      liPositions = tmp.filter(function(v, i, a) { return a.indexOf(v) === i; });
+      Logger.log('[lpParseItems] マーカー="' + marker + '" → 分割件数: ' + liPositions.length);
+      break;
+    }
+  }
+
+  if (liPositions.length === 0) {
+    Logger.log('[lpParseItems] 商品ブロックが見つかりません。HTMLの構造が変わった可能性あり。');
+    if (hasSItem) return null; // パーサー破損の可能性
+    return [];
+  }
+
+  // ── 各ブロックをパース ──
+  const items = [];
+  for (let i = 0; i < liPositions.length; i++) {
+    const start = liPositions[i];
+    const end   = (i + 1 < liPositions.length) ? liPositions[i + 1] : html.length;
+    const item  = lpParseItemBlock(html.substring(start, end));
     if (item) items.push(item);
   }
 
-  // パーサー破損チェック: s-itemが存在するがパース0件
-  if (items.length === 0 && hasSItem) return null;
+  Logger.log('[lpParseItems] 有効件数: ' + items.length + ' / 分割件数: ' + liPositions.length);
   return items;
 }
 
 /**
- * s-itemブロック1件をパース
- * @returns {Object|null}
+ * 商品ブロック1件をパース（新DOM構造 s-card--vertical 対応）
+ *
+ * 返却フィールド:
+ *   title, url, itemId,
+ *   priceText, priceUsd, priceJpy,
+ *   shipping: { type: 'FREE'|'USD'|'JPY'|'UNKNOWN', amount: number|null },
+ *   conditionText, isFromJapan,
+ *   shippingUsd: null （lpGetLowestItem で解決）
  */
 function lpParseItemBlock(block) {
-  // 無効行（ショッピング誘導等）を除外
-  if (block.indexOf('Shop on eBay') !== -1 ||
-      block.indexOf('s-item__placeholder') !== -1) return null;
 
-  // タイトル
-  const titleMatch = block.match(/class="[^"]*s-item__title[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/);
-  if (!titleMatch) return null;
-  const title = titleMatch[1].replace(/<[^>]+>/g, '').trim();
-  if (!title || title.length < 3) return null;
+  // ── 1. Shop on eBay 除外（listingid 固定値）──
+  if (block.indexOf('2500219655424533') >= 0 ||
+      block.indexOf('2500219655424563') >= 0 ||
+      block.indexOf('s-item__placeholder') >= 0) return null;
 
-  // URL (/itm/ を含む href、絶対URLと相対URL両方に対応)
-  const urlMatch = block.match(/href="(https?:\/\/www\.ebay\.com\/itm\/[^"?&"]+)/) ||
-                   block.match(/href="(\/itm\/[^"?&"]+)/);
+  // ── 2. URL / itemId ──
+  // 新構造: href="https://www.ebay.com/itm/ITEMID" または href=https://...（クォートなし）
+  const urlMatch = block.match(/href="(https?:\/\/www\.ebay\.com\/itm\/(\d+))/) ||
+                   block.match(/href=(https?:\/\/www\.ebay\.com\/itm\/(\d+))/)  ||
+                   block.match(/href="(\/itm\/(\d+))/);
   if (!urlMatch) return null;
-  const url = urlMatch[1].startsWith('/')
-    ? 'https://www.ebay.com' + urlMatch[1]
-    : urlMatch[1];
+  const url    = urlMatch[1].startsWith('/') ? 'https://www.ebay.com' + urlMatch[1] : urlMatch[1];
+  const itemId = urlMatch[2];
 
-  // 本体価格（最初の $X.XX を取得）
-  const priceMatch = block.match(/\$([0-9,]+\.?[0-9]*)/);
-  if (!priceMatch) return null;
-  const priceUsd = parseFloat(priceMatch[1].replace(/,/g, ''));
-  if (isNaN(priceUsd) || priceUsd <= 0) return null;
+  // ── 3. タイトル ──
+  // 新構造: <div class="s-card__title"><span class="...primary default">TITLE</span>
+  // 旧構造: <h3 class="s-item__title">TITLE</h3>
+  let title = '';
+  const titleNew = block.match(/<div[^>]*s-card__title[^>]*>\s*<span[^>]*primary[^>]*default[^>]*>([^<]+)/);
+  if (titleNew) {
+    title = titleNew[1].trim();
+  } else {
+    const titleOld = block.match(/<(?:h3|span)[^>]*s-item__title[^>]*>([\s\S]*?)<\/(?:h3|span)>/);
+    if (titleOld) title = titleOld[1].replace(/<[^>]+>/g, '').trim();
+  }
+  if (!title || title.length < 3 || title === 'Shop on eBay') return null;
 
-  // 送料テキスト
-  let shippingText = '';
-  const shipMatch = block.match(/class="[^"]*s-item__shipping[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/);
-  if (shipMatch) shippingText = shipMatch[1].replace(/<[^>]+>/g, '').trim();
+  // ── 4. 価格 ──
+  // 新構造: <span class="...s-card__price">$XX.XX or XX,XXX 円</span>
+  // 旧構造: <span class="s-item__price">$XX.XX</span>
+  let priceText = '', priceUsd = null, priceJpy = null;
+  const priceNew = block.match(/<span[^>]*s-card__price[^>]*>([^<]+)/);
+  if (priceNew) {
+    priceText = priceNew[1].trim();
+  } else {
+    const priceOld = block.match(/<span[^>]*s-item__price[^>]*>([^<]+)/);
+    if (priceOld) priceText = priceOld[1].trim();
+  }
+  if (priceText) {
+    const usdM = priceText.match(/\$\s*([\d,]+\.?\d*)/);
+    const jpyM = priceText.match(/([\d,]+)\s*円/);
+    if (usdM)      priceUsd = parseFloat(usdM[1].replace(/,/g, ''));
+    else if (jpyM) priceJpy = parseInt(jpyM[1].replace(/,/g, ''), 10);
+  }
+  if (priceUsd === null && priceJpy === null) return null;
 
-  // コンディション表示（SECONDARY_INFO）
+  // ── 5. 送料（{ type, amount }） ──
+  let shipping = { type: 'UNKNOWN', amount: null };
+  if (/free\s*shipping/i.test(block) || /送料無料/.test(block) || /free\s*international/i.test(block)) {
+    shipping = { type: 'FREE', amount: 0 };
+  } else {
+    const jpyShipM = block.match(/[＋+]送料\s*([\d,]+)\s*円/);
+    if (jpyShipM) {
+      shipping = { type: 'JPY', amount: parseInt(jpyShipM[1].replace(/,/g, ''), 10) };
+    } else {
+      const usdShipM = block.match(/\+?\$\s*([\d,]+\.?\d*)\s*shipping/i);
+      if (usdShipM) shipping = { type: 'USD', amount: parseFloat(usdShipM[1].replace(/,/g, '')) };
+    }
+  }
+
+  // ── 6. コンディション ──
+  // 新構造: <div class="s-card__subtitle"><span ...>COND</span>
+  // 旧構造: <span class="SECONDARY_INFO">COND</span>
   let conditionText = '';
-  const condMatch = block.match(/class="[^"]*SECONDARY_INFO[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/);
-  if (condMatch) conditionText = condMatch[1].replace(/<[^>]+>/g, '').trim();
+  const condNew = block.match(/<div[^>]*s-card__subtitle[^>]*>\s*<span[^>]*>([^<]+)/);
+  if (condNew) {
+    conditionText = condNew[1].trim();
+  } else {
+    const condOld = block.match(/class="[^"]*SECONDARY_INFO[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/);
+    if (condOld) conditionText = condOld[1].replace(/<[^>]+>/g, '').trim();
+  }
 
-  // from Japan 二重チェック
+  // ── 7. ロケーション / isFromJapan ──
+  // 新構造: 発送元 XX テキスト
+  // 旧構造: <span class="s-item__location">from Japan</span>
   let isFromJapan = false;
-  const locMatch = block.match(/class="[^"]*s-item__location[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/);
-  if (locMatch)                              isFromJapan = locMatch[1].indexOf('Japan') !== -1;
-  if (!isFromJapan && shippingText.indexOf('Japan') !== -1) isFromJapan = true;
-  if (!isFromJapan && block.indexOf('from Japan') !== -1)   isFromJapan = true;
-
-  // 明示的に他国の場合は除外（日本表示がなければスキップ）
-  if (!isFromJapan &&
-      (block.indexOf('from United States') !== -1 ||
-       block.indexOf('from China') !== -1 ||
-       block.indexOf('from Hong Kong') !== -1)) return null;
+  const locNew = block.match(/発送元\s*([^\s<"&]{1,20})/);
+  if (locNew) {
+    const loc = locNew[1].trim();
+    isFromJapan = (loc === '日本' || loc === 'Japan');
+  }
+  if (!isFromJapan) {
+    const locOld = block.match(/class="[^"]*s-item__location[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/);
+    if (locOld && locOld[1].indexOf('Japan') >= 0) isFromJapan = true;
+  }
+  if (!isFromJapan && block.indexOf('from Japan') >= 0) isFromJapan = true;
 
   return {
-    title: title,
-    url: url,
-    priceUsd: priceUsd,
-    shippingText: shippingText,
-    conditionText: conditionText,
-    isFromJapan: isFromJapan,
-    shippingUsd: null, // lpGetLowestItem で設定
+    title, url, itemId,
+    priceText, priceUsd, priceJpy,
+    shipping,
+    conditionText,
+    isFromJapan,
+    shippingUsd: null,
   };
 }
 
 /**
  * 最安値アイテムを選定（shippingUsd を解決して返す）
- * @returns {Object|null}
  */
 function lpGetLowestItem(items, exchangeRate) {
-  let lowestItem  = null;
-  let lowestTotal = Infinity;
+  let lowestItem = null, lowestTotal = Infinity;
 
   for (let i = 0; i < items.length; i++) {
-    const item   = items[i];
-    const ship   = lpNormalizeShipping(item.shippingText, exchangeRate);
-    item.shippingUsd = ship;
-    const total  = item.priceUsd + (ship !== null ? ship : 0);
+    const item = items[i];
+
+    // priceUsd: JPYのみの場合は為替換算
+    let priceUsd = item.priceUsd;
+    if ((priceUsd === null || priceUsd === undefined) && item.priceJpy) {
+      priceUsd = Math.round((item.priceJpy / exchangeRate) * 100) / 100;
+      item.priceUsd = priceUsd;
+    }
+    if (!priceUsd || priceUsd <= 0) continue;
+
+    // shippingUsd: shipping { type, amount } から解決
+    let shippingUsd = null;
+    const ship = item.shipping;
+    if (ship) {
+      if (ship.type === 'FREE') {
+        shippingUsd = 0;
+      } else if (ship.type === 'USD' && ship.amount !== null) {
+        shippingUsd = ship.amount;
+      } else if (ship.type === 'JPY' && ship.amount !== null) {
+        shippingUsd = Math.round((ship.amount / exchangeRate) * 100) / 100;
+      }
+    }
+    // 後方互換: 旧 shippingText 形式（Browse APIフォールバックのモックHTMLなど）
+    if (shippingUsd === null && item.shippingText) {
+      shippingUsd = lpNormalizeShipping(item.shippingText, exchangeRate);
+    }
+    item.shippingUsd = shippingUsd;
+
+    const total = priceUsd + (shippingUsd !== null ? shippingUsd : 0);
     if (total < lowestTotal) { lowestTotal = total; lowestItem = item; }
   }
+
   return lowestItem;
 }
 
@@ -658,26 +801,15 @@ function lpGetLowestItem(items, exchangeRate) {
 // 送料正規化
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/**
- * 送料テキストをUSDに正規化
- * @returns {number|null} USD送料（不明はnull）
- */
 function lpNormalizeShipping(text, exchangeRate) {
   if (!text) return null;
   const t = text.trim();
-
   if (/free\s*shipping/i.test(t) || /free\s*international/i.test(t)) return 0;
-
   const usdMatch = t.match(/\+?\$([0-9,]+\.?[0-9]*)/);
   if (usdMatch) return parseFloat(usdMatch[1].replace(/,/g, ''));
-
   const jpyMatch = t.match(/JPY\s*([0-9,]+)/i);
-  if (jpyMatch) {
-    const jpy = parseFloat(jpyMatch[1].replace(/,/g, ''));
-    return Math.round((jpy / exchangeRate) * 100) / 100;
-  }
-
-  return null; // 送料不明
+  if (jpyMatch) return Math.round((parseFloat(jpyMatch[1].replace(/,/g, '')) / exchangeRate) * 100) / 100;
+  return null;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -685,14 +817,13 @@ function lpNormalizeShipping(text, exchangeRate) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * USD/JPY為替レートを取得（open.er-api.com、1時間キャッシュ）
+ * USD/JPY為替レート取得（open.er-api.com、1時間キャッシュ）
  * フォールバック150はキャッシュに書き込まない
  */
 function lpGetExchangeRate() {
   const cache    = CacheService.getScriptCache();
   const cacheKey = 'LP_EXCHANGE_RATE';
-
-  const cached = cache.get(cacheKey);
+  const cached   = cache.get(cacheKey);
   if (cached) return parseFloat(cached);
 
   try {
@@ -711,18 +842,13 @@ function lpGetExchangeRate() {
   }
 
   writeLog('為替フォールバック使用：150');
-  return 150; // フォールバック値はキャッシュに書き込まない
+  return 150;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // コンディション詳細取得
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/**
- * 商品ページHTMLからCondition DescriptionとSeller Notesを抽出
- * iframe内の説明文は取得しない（取得不可でも正常動作）
- * @returns {string|null}
- */
 function lpExtractItemCondition(html) {
   const condPatterns = [
     /class="[^"]*x-item-condition-text[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/,
@@ -730,27 +856,18 @@ function lpExtractItemCondition(html) {
     /"conditionDescription"\s*:\s*"([^"]+)"/,
     /Condition:<\/[^>]+>[\s\S]{0,50}<[^>]+>([\s\S]*?)<\/[^>]+>/,
   ];
-
   for (let i = 0; i < condPatterns.length; i++) {
     const m = html.match(condPatterns[i]);
     if (m && m[1]) {
-      const text = m[1]
-        .replace(/<[^>]+>/g, '')
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&#39;/g, "'")
-        .trim();
+      const text = m[1].replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#39;/g, "'").trim();
       if (text.length > 5 && text.indexOf('iframe') === -1) return text;
     }
   }
-
-  // Seller Notes フォールバック
   const snMatch = html.match(/seller.{0,20}notes?[\s\S]{0,200}<[^>]+>([\s\S]*?)<\/[^>]+>/i);
   if (snMatch) {
     const text = snMatch[1].replace(/<[^>]+>/g, '').trim();
     if (text.length > 5 && text.indexOf('iframe') === -1) return text;
   }
-
   return null;
 }
 
@@ -758,33 +875,24 @@ function lpExtractItemCondition(html) {
 // 翻訳
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/**
- * テキストを日本語に翻訳（最大500文字、LanguageApp失敗時はgtx APIへフォールバック）
- */
 function lpTranslate(text) {
   if (!text || !text.trim()) return '';
-
-  // 翻訳テキストを最大500文字に制限
   let target = text;
   if (text.length > 500) {
     let found = false;
     for (let i = 0; i < LP_CONDITION_KEYWORDS.length; i++) {
       const m = text.match(LP_CONDITION_KEYWORDS[i]);
       if (m) {
-        const start = Math.max(0, m.index - 100);
-        const end   = Math.min(text.length, m.index + m[0].length + 100);
-        target = text.substring(start, end);
+        target = text.substring(Math.max(0, m.index - 100), Math.min(text.length, m.index + m[0].length + 100));
         found  = true;
         break;
       }
     }
     if (!found) target = text.substring(0, 500);
   }
-
   try {
     return LanguageApp.translate(target, 'en', 'ja');
   } catch (err) {
-    // フォールバック: Google Translate gtx
     try {
       const url      = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ja&dt=t&q=' + encodeURIComponent(target);
       const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
@@ -803,68 +911,44 @@ function lpTranslate(text) {
 // 結果書き込み
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/**
- * 結果シートに書き込む
- */
-function lpWriteResults(keyword, rows, exchangeRate) {
-  const sheet = lpGetOrCreateSheet(LP_SHEET.RESULTS);
+function lpWriteResults(displayName, rows, exchangeRate) {
+  const sheet    = lpGetOrCreateSheet(LP_SHEET.RESULTS);
   lpEnsureResultsHeader(sheet);
-
-  const now     = new Date();
+  const now      = new Date();
   const startRow = sheet.getLastRow() + 1;
 
   for (let i = 0; i < rows.length; i++) {
-    const r    = rows[i];
-    const cond = r.cond;
+    const r      = rows[i];
+    const cond   = r.cond;
     const rowNum = startRow + i;
 
     if (r.status === 'FETCH_FAILED') {
-      sheet.getRange(rowNum, 1, 1, 16).setValues([[
-        now, keyword, cond.group, cond.id, cond.label,
-        '取得失敗', '', '', '', '', '', '', '', '-', '', r.searchUrl,
-      ]]);
+      sheet.getRange(rowNum, 1, 1, 16).setValues([[now, displayName, cond.group, cond.id, cond.label, '取得失敗', '', '', '', '', '', '', '', '-', '', r.searchUrl]]);
       sheet.getRange(rowNum, 1, 1, 16).setBackground('#FF9999');
       continue;
     }
-
     if (r.status === 'PARSE_FAILED') {
-      sheet.getRange(rowNum, 1, 1, 16).setValues([[
-        now, keyword, cond.group, cond.id, cond.label,
-        '取得失敗（パーサー要確認）', '', '', '', '', '', '', '', '-', '', r.searchUrl,
-      ]]);
+      sheet.getRange(rowNum, 1, 1, 16).setValues([[now, displayName, cond.group, cond.id, cond.label, '取得失敗（パーサー要確認）', '', '', '', '', '', '', '', '-', '', r.searchUrl]]);
       sheet.getRange(rowNum, 1, 1, 16).setBackground('#FF9999');
       continue;
     }
-
     if (r.status === 'NO_RESULTS') {
-      sheet.getRange(rowNum, 1, 1, 16).setValues([[
-        now, keyword, cond.group, cond.id, cond.label,
-        '該当なし', '', '', '', '', '', '', '', '-', '', r.searchUrl,
-      ]]);
+      sheet.getRange(rowNum, 1, 1, 16).setValues([[now, displayName, cond.group, cond.id, cond.label, '該当なし', '', '', '', '', '', '', '', '-', '', r.searchUrl]]);
       sheet.getRange(rowNum, 1, 1, 16).setBackground('#CCCCCC');
       continue;
     }
 
-    // 通常データ
-    const item = r.item;
-    const prev = lpGetPreviousPrice(keyword, cond.id, sheet, rowNum);
-    const diff = lpFormatDiff(r.totalUsd, prev);
+    const item        = r.item;
+    const prev        = lpGetPreviousPrice(displayName, cond.id, sheet, rowNum);
+    const diff        = lpFormatDiff(r.totalUsd, prev);
     const shipDisplay = item.shippingUsd !== null ? item.shippingUsd : '不明';
     const jpyDisplay  = r.totalJpy !== null ? r.totalJpy : '';
 
     sheet.getRange(rowNum, 1, 1, 16).setValues([[
-      now, keyword, cond.group, cond.id, cond.label,
-      item.title || '',
-      item.priceUsd || '',
-      shipDisplay,
-      r.totalUsd || '',
-      jpyDisplay,
-      item.conditionText || '',
-      r.descEn || '',
-      r.descJa || '',
-      diff.text,
-      item.url || '',
-      r.searchUrl || '',
+      now, displayName, cond.group, cond.id, cond.label,
+      item.title || '', item.priceUsd || '', shipDisplay, r.totalUsd || '', jpyDisplay,
+      item.conditionText || '', r.descEn || '', r.descJa || '', diff.text,
+      item.url || '', r.searchUrl || '',
     ]]);
 
     // 数値書式
@@ -875,36 +959,27 @@ function lpWriteResults(keyword, rows, exchangeRate) {
 
     // URL列をHYPERLINKに
     if (item.url) {
-      sheet.getRange(rowNum, LP_COL.ITEM_LINK)
-           .setFormula('=HYPERLINK("' + item.url.replace(/"/g, '') + '","商品ページ")');
+      sheet.getRange(rowNum, LP_COL.ITEM_LINK).setFormula('=HYPERLINK("' + item.url.replace(/"/g, '') + '","商品ページ")');
     }
     if (r.searchUrl) {
-      sheet.getRange(rowNum, LP_COL.SEARCH_URL)
-           .setFormula('=HYPERLINK("' + r.searchUrl.replace(/"/g, '') + '","検索結果")');
+      sheet.getRange(rowNum, LP_COL.SEARCH_URL).setFormula('=HYPERLINK("' + r.searchUrl.replace(/"/g, '') + '","検索結果")');
     }
 
     // 差分の文字色
-    if (diff.color) {
-      sheet.getRange(rowNum, LP_COL.DIFF).setFontColor(diff.color);
-    }
+    if (diff.color) sheet.getRange(rowNum, LP_COL.DIFF).setFontColor(diff.color);
   }
 
   SpreadsheetApp.flush();
 }
 
-/**
- * 前回の合計価格を取得（同一キーワード+conditionId の直近行）
- * @returns {number|null}
- */
-function lpGetPreviousPrice(keyword, conditionId, sheet, currentRow) {
+function lpGetPreviousPrice(displayName, conditionId, sheet, currentRow) {
   if (currentRow <= 2) return null;
-  const lastData = currentRow - 2; // 1-based → 行数
+  const lastData = currentRow - 2;
   if (lastData < 1) return null;
-
   const data = sheet.getRange(2, 1, lastData, LP_COL.TOTAL_USD).getValues();
   for (let i = data.length - 1; i >= 0; i--) {
-    if (String(data[i][LP_COL.KEYWORD - 1])  === keyword &&
-        String(data[i][LP_COL.COND_ID - 1])  === conditionId) {
+    if (String(data[i][LP_COL.KEYWORD - 1]) === displayName &&
+        String(data[i][LP_COL.COND_ID - 1]) === conditionId) {
       const v = data[i][LP_COL.TOTAL_USD - 1];
       return (v !== '' && !isNaN(v)) ? parseFloat(v) : null;
     }
@@ -912,9 +987,6 @@ function lpGetPreviousPrice(keyword, conditionId, sheet, currentRow) {
   return null;
 }
 
-/**
- * 差分テキストと色を生成
- */
 function lpFormatDiff(current, previous) {
   if (previous === null || previous === undefined) return { text: '-', color: null };
   const diff = current - previous;
@@ -929,19 +1001,15 @@ function lpFormatDiff(current, previous) {
 
 function lpTodayKey() {
   const d = new Date();
-  return 'LP_REQ_' + d.getFullYear() +
-    String(d.getMonth() + 1).padStart(2, '0') +
-    String(d.getDate()).padStart(2, '0');
+  return 'LP_REQ_' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
 }
 
 function lpCheckRequestLimit() {
-  const count = parseInt(PropertiesService.getScriptProperties().getProperty(lpTodayKey()) || '0');
-  return count < LP_MAX_DAILY_REQUESTS;
+  return parseInt(PropertiesService.getScriptProperties().getProperty(lpTodayKey()) || '0') < LP_MAX_DAILY_REQUESTS;
 }
 
 function lpIncrementRequestCount() {
-  const props = PropertiesService.getScriptProperties();
-  const key   = lpTodayKey();
+  const props = PropertiesService.getScriptProperties(), key = lpTodayKey();
   props.setProperty(key, String(parseInt(props.getProperty(key) || '0') + 1));
 }
 
@@ -950,23 +1018,27 @@ function lpIncrementRequestCount() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function lpInitSheets() {
-  lpGetOrCreateSheet(LP_SHEET.SETTINGS);
+  const settingsSheet = lpGetOrCreateSheet(LP_SHEET.SETTINGS);
+  // 設定シートのA1ヘッダー初期化
+  if (!settingsSheet.getRange('A1').getValue()) {
+    settingsSheet.getRange('A1').setValue('キーワード / eBay検索URL');
+    settingsSheet.getRange('A1').setFontWeight('bold');
+  }
   lpEnsureResultsHeader(lpGetOrCreateSheet(LP_SHEET.RESULTS));
   lpGetOrCreateSheet(LP_SHEET.LOG);
 }
 
 function lpGetOrCreateSheet(name) {
-  return ss.getSheetByName(name) || ss.insertSheet(name);
+  return lpGetSpreadsheet_().getSheetByName(name) || lpGetSpreadsheet_().insertSheet(name);
 }
 
 function lpEnsureResultsHeader(sheet) {
-  const first = sheet.getRange(1, 1).getValue();
-  if (first === LP_RESULTS_HEADER[0]) return;
-  const headerRange = sheet.getRange(1, 1, 1, LP_RESULTS_HEADER.length);
-  headerRange.setValues([LP_RESULTS_HEADER]);
-  headerRange.setFontWeight('bold');
-  headerRange.setBackground('#1E56A0');
-  headerRange.setFontColor('#FFFFFF');
+  if (sheet.getRange(1, 1).getValue() === LP_RESULTS_HEADER[0]) return;
+  const r = sheet.getRange(1, 1, 1, LP_RESULTS_HEADER.length);
+  r.setValues([LP_RESULTS_HEADER]);
+  r.setFontWeight('bold');
+  r.setBackground('#1E56A0');
+  r.setFontColor('#FFFFFF');
   sheet.setFrozenRows(1);
 }
 
@@ -977,7 +1049,7 @@ function lpEnsureResultsHeader(sheet) {
 function writeLog(message) {
   Logger.log(message);
   try {
-    const logSheet = ss.getSheetByName(LP_SHEET.LOG);
+    const logSheet = lpGetSpreadsheet_().getSheetByName(LP_SHEET.LOG);
     if (logSheet) logSheet.appendRow([new Date(), message]);
   } catch (err) {
     Logger.log('writeLog失敗: ' + err.toString());
@@ -988,23 +1060,17 @@ function writeLog(message) {
 // Browse API フォールバック（デフォルト無効）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/**
- * 設定シートのC1が "ON" の場合のみフォールバックを有効化
- */
 function lpIsFallbackEnabled() {
   try {
-    const sheet = ss.getSheetByName(LP_SHEET.SETTINGS);
+    const sheet = lpGetSpreadsheet_().getSheetByName(LP_SHEET.SETTINGS);
     if (!sheet) return false;
     return String(sheet.getRange('C1').getValue()).trim() === 'ON';
-  } catch (err) {
-    return false;
-  }
+  } catch (err) { return false; }
 }
 
 /**
- * Browse API による検索フォールバック
- * ※デフォルト無効。設定シートC1="ON"かつ503が3回連続した場合のみ実行
- * @returns {string|null} パーサーが処理可能なモックHTML or null
+ * Browse API フォールバック（設定シートC1="ON"かつ503が3回連続した時のみ実行）
+ * スタンドアロン版: 設定シートB1=App ID、B2=Cert IDから認証
  */
 function lpBrowseFallback(keyword, conditionId) {
   if (!lpIsFallbackEnabled()) return null;
@@ -1012,9 +1078,34 @@ function lpBrowseFallback(keyword, conditionId) {
   writeLog('Browse APIフォールバック実行: ' + keyword + ' / ' + conditionId);
 
   try {
-    const config    = getEbayConfig();  // Config.gs
-    const token     = getOAuthToken();  // Config.gs
-    const searchUrl = config.getBrowseApiUrl() + '/item_summary/search?' + [
+    const settingsSheet = lpGetSpreadsheet_().getSheetByName(LP_SHEET.SETTINGS);
+    if (!settingsSheet) return null;
+
+    const appId  = String(settingsSheet.getRange('B1').getValue()).trim();
+    const certId = String(settingsSheet.getRange('B2').getValue()).trim();
+    if (!appId || !certId) {
+      writeLog('Browse APIフォールバック: 設定シートB1(App ID)・B2(Cert ID)が未設定');
+      return null;
+    }
+
+    // OAuth トークン取得
+    const tokenResp = UrlFetchApp.fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+      method: 'post',
+      headers: {
+        'Authorization': 'Basic ' + Utilities.base64Encode(appId + ':' + certId),
+        'Content-Type':  'application/x-www-form-urlencoded',
+      },
+      payload: 'grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope',
+      muteHttpExceptions: true,
+    });
+    if (tokenResp.getResponseCode() !== 200) {
+      writeLog('Browse APIフォールバック: トークン取得失敗 HTTP ' + tokenResp.getResponseCode());
+      return null;
+    }
+    const token = JSON.parse(tokenResp.getContentText()).access_token;
+
+    // Browse API 検索
+    const searchUrl = 'https://api.ebay.com/buy/browse/v1/item_summary/search?' + [
       'q='     + encodeURIComponent(keyword),
       'filter=conditionIds:{' + conditionId + '}',
       'filter=itemLocationCountry:JP',
@@ -1025,14 +1116,9 @@ function lpBrowseFallback(keyword, conditionId) {
 
     const response = UrlFetchApp.fetch(searchUrl, {
       method: 'get',
-      headers: {
-        'Authorization':             'Bearer ' + token,
-        'X-EBAY-C-MARKETPLACE-ID':   'EBAY_US',
-        'Content-Type':              'application/json',
-      },
+      headers: { 'Authorization': 'Bearer ' + token, 'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US' },
       muteHttpExceptions: true,
     });
-
     if (response.getResponseCode() !== 200) {
       writeLog('Browse APIフォールバック失敗: HTTP ' + response.getResponseCode());
       return null;
@@ -1049,13 +1135,15 @@ function lpBrowseFallback(keyword, conditionId) {
       const shipping = (item.shippingOptions && item.shippingOptions[0] && item.shippingOptions[0].shippingCost)
         ? '+$' + item.shippingOptions[0].shippingCost.value + ' shipping'
         : 'Free shipping';
-      mockHtml += '<li class="s-item">' +
-        '<h3 class="s-item__title">'   + (item.title || '').replace(/</g, '&lt;') + '</h3>' +
+      mockHtml += '<li data-listingid="' + itemId + '" class="s-card s-card--vertical">' +
+        '<div class="s-card__title"><span class="su-styled-text primary default">' +
+        (item.title || '').replace(/</g, '&lt;') + '</span></div>' +
         '<a href="https://www.ebay.com/itm/' + itemId + '"></a>' +
-        '<span class="s-item__price">$' + price + '</span>' +
-        '<span class="s-item__shipping">' + shipping + '</span>' +
-        '<span class="SECONDARY_INFO">'  + (item.condition || '') + '</span>' +
-        '<span class="s-item__location">from Japan</span>' +
+        '<span class="su-styled-text primary bold large-1 s-card__price">$' + price + '</span>' +
+        '<div class="s-card__subtitle"><span class="su-styled-text secondary default">' +
+        (item.condition || '') + '</span></div>' +
+        '<span class="ship-info">' + shipping + '</span>' +
+        '<span class="loc-info">from Japan</span>' +
         '</li>';
     });
 
@@ -1066,4 +1154,102 @@ function lpBrowseFallback(keyword, conditionId) {
     writeLog('Browse APIフォールバックエラー: ' + err.toString());
     return null;
   }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// テスト用（clasp run専用）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * lpParseItems / lpParseItemBlock の動作確認（clasp run testLpParser）
+ *
+ * ログ出力内容:
+ *   1. 構造フラグ確認（s-item / s-card / srp-results / data-listingid）
+ *   2. 分割件数・有効件数
+ *   3. 最初の3件の全フィールド
+ */
+function testLpParser() {
+  const TEST_URL =
+    'https://www.ebay.com/sch/i.html' +
+    '?_nkw=pokemon+booster+box&_sacat=0&LH_BIN=1&LH_ItemCondition=2750' +
+    '&_sop=15&_salic=104&LH_LocatedIn=1';
+
+  Logger.log('========================================');
+  Logger.log('testLpParser 開始');
+  Logger.log('URL: ' + TEST_URL);
+  Logger.log('========================================');
+
+  const html = lpFetchEbayPage(TEST_URL);
+  if (!html) {
+    Logger.log('ERROR: HTMLの取得に失敗しました');
+    return;
+  }
+  Logger.log('HTML取得完了: ' + html.length + ' bytes');
+  Logger.log('[HTML先頭1000文字]\n' + html.substring(0, 1000));
+
+  // ── 構造フラグ（lpParseItems内でも出力されるが先行確認） ──
+  Logger.log('--- 構造フラグ ---');
+  Logger.log('s-item        : ' + (html.indexOf('s-item') !== -1));
+  Logger.log('s-card        : ' + (html.indexOf('s-card') !== -1));
+  Logger.log('s-card--vert  : ' + (html.indexOf('s-card--vertical') !== -1));
+  Logger.log('srp-results   : ' + (html.indexOf('srp-results') !== -1));
+  Logger.log('data-listingid: ' + (html.indexOf('data-listingid') !== -1));
+
+  const items = lpParseItems(html);
+
+  if (items === null) {
+    Logger.log('RESULT: パーサー破損 (s-item あり / 有効件数0)');
+    return;
+  }
+
+  Logger.log('--- 結果サマリー ---');
+  Logger.log('有効件数: ' + items.length);
+
+  if (items.length === 0) {
+    Logger.log('RESULT: 有効商品なし');
+    return;
+  }
+
+  Logger.log('--- 上位3件（全フィールド） ---');
+  const limit = Math.min(3, items.length);
+  for (let i = 0; i < limit; i++) {
+    const it = items[i];
+    Logger.log('[' + (i + 1) + '] title       : ' + it.title);
+    Logger.log('[' + (i + 1) + '] url         : ' + it.url);
+    Logger.log('[' + (i + 1) + '] itemId      : ' + it.itemId);
+    Logger.log('[' + (i + 1) + '] priceText   : ' + it.priceText);
+    Logger.log('[' + (i + 1) + '] priceUsd    : ' + it.priceUsd);
+    Logger.log('[' + (i + 1) + '] priceJpy    : ' + it.priceJpy);
+    Logger.log('[' + (i + 1) + '] shipping    : ' + JSON.stringify(it.shipping));
+    Logger.log('[' + (i + 1) + '] conditionText: ' + it.conditionText);
+    Logger.log('[' + (i + 1) + '] isFromJapan : ' + it.isFromJapan);
+    Logger.log('');
+  }
+
+  Logger.log('========================================');
+  Logger.log('testLpParser 完了');
+  Logger.log('========================================');
+}
+
+function checkLowestPriceResults() {
+  const logSheet     = lpGetSpreadsheet_().getSheetByName(LP_SHEET.LOG);
+  const resultsSheet = lpGetSpreadsheet_().getSheetByName(LP_SHEET.RESULTS);
+  const out          = { logs: [], results: [], resultCount: 0 };
+
+  if (logSheet && logSheet.getLastRow() > 1) {
+    out.logs = logSheet.getRange(2, 1, Math.min(logSheet.getLastRow() - 1, 60), 2)
+      .getValues().map(function(r) { return r[1]; });
+  }
+  if (resultsSheet && resultsSheet.getLastRow() > 1) {
+    const data = resultsSheet.getRange(2, 1, resultsSheet.getLastRow() - 1, 16).getValues();
+    out.resultCount = data.length;
+    out.results = data.map(function(r) {
+      return {
+        keyword: r[1], condId: r[3], condJa: r[4],
+        title:   String(r[5]).substring(0, 60),
+        priceUsd: r[6], shipUsd: r[7], totalUsd: r[8], totalJpy: r[9], diff: r[13],
+      };
+    });
+  }
+  return JSON.stringify(out);
 }
