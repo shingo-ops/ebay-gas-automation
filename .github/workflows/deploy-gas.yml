@@ -8,6 +8,7 @@ on:
     paths:
       - 'gas/listing/standalone/**'
       - 'gas/listing/container/**'
+      - 'gas/research/standalone/**'
       - 'gas/research/container/**'
       - 'gas/ebay-db/container/**'
 
@@ -64,6 +65,35 @@ jobs:
             SCRIPT_ID="${{ secrets.LISTING_CB_PROD }}"
           else
             SCRIPT_ID="${{ secrets.LISTING_CB_DEV }}"
+          fi
+          sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          clasp push --force
+
+  deploy-research-standalone:
+    runs-on: ubuntu-latest
+    # RESEARCH_SA_PROD / RESEARCH_SA_DEV を GitHub Secrets に追加後に有効になる
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Restore clasp credentials
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+
+      - name: Set scriptId and deploy
+        run: |
+          cd gas/research/standalone
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            SCRIPT_ID="${{ secrets.RESEARCH_SA_PROD }}"
+          else
+            SCRIPT_ID="${{ secrets.RESEARCH_SA_DEV }}"
           fi
           sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
           clasp push --force
