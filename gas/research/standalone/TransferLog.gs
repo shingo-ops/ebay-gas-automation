@@ -151,11 +151,7 @@ function cleanupOldLogs(spreadsheetId) {
  */
 function setupLogCleanupTrigger() {
   setupLogCleanupTriggerSilent();
-  SpreadsheetApp.getUi().alert(
-    'トリガー設定完了',
-    '転記ログの自動クリーンアップ（毎日AM3時）を設定しました。',
-    SpreadsheetApp.getUi().ButtonSet.OK
-  );
+  return { success: true, message: '転記ログの自動クリーンアップ（毎日AM3時）を設定しました。' };
 }
 
 /**

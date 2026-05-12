@@ -17,7 +17,7 @@
  * @param {Object} specInfo  {category: {categoryId, categoryName}, ...}
  * @returns {boolean} true=続行, false=キャンセル（転記中止）
  */
-function checkCategoryMismatch(itemInfo, specInfo) {
+function checkCategoryMismatch(itemInfo, specInfo, categoryChoice) {
   if (!itemInfo || !itemInfo.category || !specInfo || !specInfo.category) {
     Logger.log('⚠️ [カテゴリチェック] カテゴリ情報が不完全のためスキップ');
     return true;
@@ -33,36 +33,22 @@ function checkCategoryMismatch(itemInfo, specInfo) {
     return true;
   }
 
-  const promptUi = SpreadsheetApp.getUi();
-  const promptRes = promptUi.prompt(
-    '⚠️ カテゴリ不一致',
-    'Item URL: ' + itemCatId + ' (' + (itemInfo.category.categoryName || '') + ')\n' +
-    'スペックURL: ' + specCatId + ' (' + (specInfo.category.categoryName || '') + ')\n\n' +
-    '1 → Item URLのカテゴリを使用\n' +
-    '2 → スペックURLのカテゴリを使用\n\n' +
-    '番号を入力してください:',
-    promptUi.ButtonSet.OK_CANCEL
-  );
-
-  if (promptRes.getSelectedButton() === promptUi.Button.CANCEL) {
-    Logger.log('[カテゴリチェック] ユーザーがキャンセル');
-    return false;
-  }
-
-  const choice = promptRes.getResponseText().trim();
-  if (choice === '1') {
+  // カテゴリ不一致: categoryChoiceで解決（バインドスクリプト側でユーザーに確認済み）
+  Logger.log('[カテゴリチェック] 不一致: categoryChoice=' + categoryChoice);
+  if (categoryChoice === '1') {
     Logger.log('[カテゴリチェック] Item URLを採用: ' + itemCatId);
     specInfo.category.categoryId   = itemCatId;
     specInfo.category.categoryName = itemInfo.category.categoryName;
-  } else if (choice === '2') {
+    return true;
+  } else if (categoryChoice === '2') {
     Logger.log('[カテゴリチェック] スペックURLを採用: ' + specCatId);
     itemInfo.category.categoryId   = specCatId;
     itemInfo.category.categoryName = specInfo.category.categoryName;
-  } else {
-    promptUi.alert('1 または 2 を入力してください。転記を中止します。');
-    return false;
+    return true;
   }
-  return true;
+  // 選択なし: バインドスクリプト側でユーザーに確認が必要
+  Logger.log('[カテゴリチェック] categoryChoiceが未指定のため転記中止');
+  return false;
 }
 
 /**
@@ -226,7 +212,7 @@ function getColumnByHeader(headerMapping, configHeader) {
  * @param {string} sku SKU（任意）
  * @returns {Object} {data: 転記データ配列, specColors: Item Specifics色情報配列}
  */
-function prepareTransferDataWithMapping(itemInfo, specInfo, listingSheet, headerMapping, policyData, sku) {
+function prepareTransferDataWithMapping(spreadsheetId, itemInfo, specInfo, listingSheet, headerMapping, policyData, sku) {
   Logger.log('>>> prepareTransferDataWithMapping開始');
   Logger.log('  - itemInfo: ' + (itemInfo ? 'あり' : 'なし'));
   Logger.log('  - specInfo: ' + (specInfo ? 'あり' : 'なし'));
@@ -234,7 +220,7 @@ function prepareTransferDataWithMapping(itemInfo, specInfo, listingSheet, header
   Logger.log('  - policyData: ' + (policyData ? 'あり' : 'なし'));
   Logger.log('  - sku: ' + sku);
 
-  const researchSheet = ss.getSheetByName(SHEET_NAMES.RESEARCH);
+  const researchSheet = getTargetSpreadsheetResearch(spreadsheetId).getSheetByName(SHEET_NAMES.RESEARCH);
   Logger.log('  - researchSheet取得完了');
 
   // リサーチシートから各セクションのデータを取得
@@ -560,19 +546,7 @@ function prepareTransferDataWithMapping(itemInfo, specInfo, listingSheet, header
  * ポリシー1（14行目）のデータでSKUを生成して出品
  */
 function onListingButtonPolicy1(spreadsheetId) {
-  const ss = getTargetSpreadsheetResearch(spreadsheetId);
-  const ui = SpreadsheetApp.getUi();
-  const response = ui.alert(
-    '出品確認',
-    'Expedited shippingで出品しますか？',
-    ui.ButtonSet.OK_CANCEL
-  );
-
-  if (response === ui.Button.OK) {
-    transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_1_ROW, 'Expedited');
-  } else {
-    ss.toast('出品をキャンセルしました', 'eBay 出品', 3);
-  }
+  return transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_1_ROW, 'Expedited');
 }
 
 /**
@@ -580,19 +554,7 @@ function onListingButtonPolicy1(spreadsheetId) {
  * ポリシー2（15行目）のデータでSKUを生成して出品
  */
 function onListingButtonPolicy2(spreadsheetId) {
-  const ss = getTargetSpreadsheetResearch(spreadsheetId);
-  const ui = SpreadsheetApp.getUi();
-  const response = ui.alert(
-    '出品確認',
-    'Economy shippingで出品しますか？',
-    ui.ButtonSet.OK_CANCEL
-  );
-
-  if (response === ui.Button.OK) {
-    transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_2_ROW, 'Economy');
-  } else {
-    ss.toast('出品をキャンセルしました', 'eBay 出品', 3);
-  }
+  return transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_2_ROW, 'Economy');
 }
 
 /**
@@ -600,19 +562,7 @@ function onListingButtonPolicy2(spreadsheetId) {
  * ポリシー3（16行目）のデータでSKUを生成して出品
  */
 function onListingButtonPolicy3(spreadsheetId) {
-  const ss = getTargetSpreadsheetResearch(spreadsheetId);
-  const ui = SpreadsheetApp.getUi();
-  const response = ui.alert(
-    '出品確認',
-    '書状で出品しますか？',
-    ui.ButtonSet.OK_CANCEL
-  );
-
-  if (response === ui.Button.OK) {
-    transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_3_ROW, '書状');
-  } else {
-    ss.toast('出品をキャンセルしました', 'eBay 出品', 3);
-  }
+  return transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_3_ROW, '書状');
 }
 
 /**
@@ -623,17 +573,12 @@ function onListingButtonPolicy3(spreadsheetId) {
  * @param {number} policyRow ポリシー行番号（14, 15, 16のいずれか）
  * @param {string} policyLabel ポリシー名（表示用：Expedited, Economy, 書状）
  */
-function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel) {
+function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel, categoryChoice) {
   const ss = getTargetSpreadsheetResearch(spreadsheetId);
   // 連打防止: スクリプトロックを即時取得
-  const lock = LockService.getScriptLock();
+  const lock = LockService.getUserLock();
   if (!lock.tryLock(0)) {
-    SpreadsheetApp.getUi().alert(
-      '⚠️ 処理中',
-      '現在、別の出品処理を実行中です。\n完了までお待ちください。',
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-    return;
+    return { success: false, message: '⚠️ 処理中: 現在、別の出品処理を実行中です。\n完了までお待ちください。' };
   }
 
   // エラー時のクリーンアップ用の変数
@@ -655,8 +600,7 @@ function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel) {
     // 担当者のバリデーション（B2セル）
     const staffName = researchSheet.getRange(RESEARCH_TOP_INFO.DATA_ROW, RESEARCH_TOP_INFO.COLUMNS.STAFF.col).getValue();
     if (!staffName || staffName.toString().trim() === '') {
-      SpreadsheetApp.getUi().alert('エラー: 担当者が入力されていません\n\nリサーチシートのB2セル（担当者）を入力してください。');
-      return;
+      return { success: false, message: 'エラー: 担当者が入力されていません\n\nリサーチシートのB2セル（担当者）を入力してください。' };
     }
 
     // Condition列バリデーション（転記前チェック）
@@ -673,13 +617,8 @@ function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel) {
             if (jaMap_) {
               const allowedValues_ = Object.values(jaMap_).filter(function(v) { return v && v.trim() !== ''; });
               if (allowedValues_.length > 0 && allowedValues_.indexOf(conditionVal_) === -1) {
-                SpreadsheetApp.getUi().alert(
-                  '転記エラー',
-                  '列「' + LISTING_COLUMNS.CONDITION.header + '」の値「' + conditionVal_ + '」はデータ入力規則に違反しています。\n許可される値: ' + allowedValues_.join(', '),
-                  SpreadsheetApp.getUi().ButtonSet.OK
-                );
                 Logger.log('❌ Condition値が規則違反のため転記中止: ' + conditionVal_);
-                return;
+                return { success: false, message: '列「' + LISTING_COLUMNS.CONDITION.header + '」の値「' + conditionVal_ + '」はデータ入力規則に違反しています。\n許可される値: ' + allowedValues_.join(', ') };
               }
               Logger.log('✅ Condition値検証OK: ' + conditionVal_);
             }
@@ -707,8 +646,7 @@ function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel) {
     let specUrl = researchSheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.SPEC_URL.col).getValue();
 
     if (!itemUrl || itemUrl.toString().trim() === '') {
-      SpreadsheetApp.getUi().alert('Item URLが入力されていません。\n\nリサーチシートのItem URL欄を入力してください。');
-      return;
+      return { success: false, message: 'Item URLが入力されていません。\n\nリサーチシートのItem URL欄を入力してください。' };
     }
 
     // スペックURLが空白の場合、Item URLを使用
@@ -751,9 +689,9 @@ function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel) {
       needsCacheSave = true;
     }
 
-    // カテゴリID整合性チェック（統一ダイアログ）
-    if (!checkCategoryMismatch(itemInfo, specInfo)) {
-      return; // ユーザーキャンセル
+    // カテゴリID整合性チェック（categoryChoiceはバインドスクリプト側で取得）
+    if (!checkCategoryMismatch(itemInfo, specInfo, categoryChoice)) {
+      return { success: false, message: 'カテゴリ不一致のため転記を中止しました。バインドスクリプト側でcategoryChoiceを指定してください。' };
     }
 
     // APIフォールバック時はキャッシュを新URLのデータで更新
@@ -803,7 +741,7 @@ function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel) {
 
     Logger.log('ステップ10: prepareTransferDataWithMapping呼び出し開始');
     // 転記データを準備（Item情報、スペック情報、ポリシーデータ、SKUを渡す）
-    const preparedData = prepareTransferDataWithMapping(itemInfo, specInfo, listingSheet, headerMapping, policyData, sku);
+    const preparedData = prepareTransferDataWithMapping(spreadsheetId, itemInfo, specInfo, listingSheet, headerMapping, policyData, sku);
     Logger.log('ステップ11: prepareTransferDataWithMapping完了');
     const transferData = preparedData.data;
     const specColors = preparedData.specColors;
@@ -979,12 +917,7 @@ function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel) {
           ss.toast('画像が見つかりませんでした', 'eBay 出品', 3);
         }
       } else {
-        Logger.log('警告: 画像フォルダが設定されていないため、画像をスキップしました');
-        SpreadsheetApp.getUi().alert(
-          '⚠️ 画像フォルダ未設定',
-          '画像の保存先フォルダが設定されていないため、画像は保存されません。\n\n「ツール設定」シートの「画像フォルダURL」を設定してください。',
-          SpreadsheetApp.getUi().ButtonSet.OK
-        );
+        Logger.log('⚠️ 画像フォルダ未設定: 「ツール設定」シートの「画像フォルダURL」を設定してください。画像はスキップされました。');
       }
     }
 
@@ -1000,13 +933,10 @@ function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel) {
     Logger.log('出品データを転記しました（行: ' + newRow + '、SKU: ' + sku + '、Item Specifics色設定: ' + specColors.length + '件）');
     updateTransferLogStatus(spreadsheetId, logRow, '成功', '');
 
-    // 完了メッセージを表示
-    const ui = SpreadsheetApp.getUi();
-    ui.alert(
-      '転記完了 (' + policyLabel + ')',
-      'SKU: ' + sku + '\n出品シートの' + newRow + '行目に転記しました。',
-      ui.ButtonSet.OK
-    );
+    return {
+      success: true,
+      message: '転記完了 (' + policyLabel + ')\nSKU: ' + sku + '\n出品シートの' + newRow + '行目に転記しました。'
+    };
 
   } catch (error) {
     Logger.log('transferListingDataWithPolicyエラー: ' + error.toString());
@@ -1024,7 +954,7 @@ function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel) {
       }
     }
 
-    SpreadsheetApp.getUi().alert('転記エラー:\n\n' + error.toString());
+    return { success: false, message: '転記エラー:\n\n' + error.toString() };
   } finally {
     lock.releaseLock();
   }

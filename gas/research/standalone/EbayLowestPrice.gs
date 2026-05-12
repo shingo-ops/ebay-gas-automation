@@ -100,22 +100,6 @@ const LP_CONDITION_KEYWORDS = [
 ];
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// カスタムメニュー
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('eBay最安値検索')
-    .addItem('▶ 今すぐ実行（全キーワード）', 'runAllLowestPrice')
-    .addSeparator()
-    .addItem('⏰ 毎日9時に自動実行', 'setupDailyLowestPriceTrigger')
-    .addItem('🗑 自動実行を解除',     'removeDailyLowestPriceTrigger')
-    .addSeparator()
-    .addItem('⚙ 初回設定（トリガー登録）', 'setupLowestPriceTrigger')
-    .addToUi();
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // トリガー管理
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -133,7 +117,7 @@ function setupLowestPriceTrigger(spreadsheetId) {
     .onEdit()
     .create();
   writeLog('handleEditLowestPriceトリガー登録完了');
-  SpreadsheetApp.getUi().alert('✅ onEditトリガーを登録しました');
+  return { success: true, message: '✅ onEditトリガーを登録しました' };
 }
 
 /**
@@ -151,8 +135,8 @@ function setupDailyLowestPriceTrigger(spreadsheetId) {
     .everyDays(1)
     .inTimezone('Asia/Tokyo')
     .create();
-  SpreadsheetApp.getUi().alert('✅ 毎日9時の自動実行を設定しました');
   writeLog('毎日9時の自動実行トリガー登録');
+  return { success: true, message: '✅ 毎日9時の自動実行を設定しました' };
 }
 
 /**
@@ -165,8 +149,8 @@ function removeDailyLowestPriceTrigger(spreadsheetId) {
     if (t.getHandlerFunction() === 'runAllLowestPrice' &&
         t.getEventType() === ScriptApp.EventType.CLOCK) { ScriptApp.deleteTrigger(t); removed++; }
   });
-  SpreadsheetApp.getUi().alert(removed > 0 ? '✅ 自動実行を解除しました' : '⚠️ 自動実行が設定されていません');
   writeLog('毎日9時の自動実行トリガー削除: ' + removed + '件');
+  return { success: true, message: removed > 0 ? '✅ 自動実行を解除しました' : '⚠️ 自動実行が設定されていません' };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -179,7 +163,7 @@ function removeDailyLowestPriceTrigger(spreadsheetId) {
  */
 function handleEditLowestPrice(e) {
   if (!e) return;
-  const lock = LockService.getScriptLock();
+  const lock = LockService.getUserLock();
   if (!lock.tryLock(0)) {
     Logger.log('他の処理が実行中のためスキップ (handleEditLowestPrice)');
     return;
@@ -257,19 +241,18 @@ function lpParseInput(input) {
  * 全キーワードに対して最安値検索を実行（メニューから呼ぶ）
  */
 function runAllLowestPrice() {
-  const lock = LockService.getScriptLock();
+  const lock = LockService.getUserLock();
   if (!lock.tryLock(0)) {
-    SpreadsheetApp.getUi().alert('⚠️ 他の処理が実行中です。しばらく待ってから再実行してください。');
-    return;
+    return { success: false, message: '⚠️ 他の処理が実行中です。しばらく待ってから再実行してください。' };
   }
   try {
     lpInitSheets();
 
     const settingsSheet = lpGetSpreadsheet_().getSheetByName(LP_SHEET.SETTINGS);
-    if (!settingsSheet) { SpreadsheetApp.getUi().alert('「設定」シートが見つかりません'); return; }
+    if (!settingsSheet) { return { success: false, message: '「設定」シートが見つかりません' }; }
 
     const lastRow = settingsSheet.getLastRow();
-    if (lastRow < 2) { SpreadsheetApp.getUi().alert('設定シートのA2以降にキーワードを入力してください'); return; }
+    if (lastRow < 2) { return { success: false, message: '設定シートのA2以降にキーワードを入力してください' }; }
 
     const allInputs = settingsSheet
       .getRange(2, 1, lastRow - 1, 1)
@@ -277,7 +260,7 @@ function runAllLowestPrice() {
       .map(function(r) { return String(r[0]).trim(); })
       .filter(function(k) { return k !== ''; });
 
-    if (allInputs.length === 0) { SpreadsheetApp.getUi().alert('有効なキーワードがありません'); return; }
+    if (allInputs.length === 0) { return { success: false, message: '有効なキーワードがありません' }; }
 
     // バッチ進捗（前回中断分の続き）
     const props = PropertiesService.getScriptProperties();
@@ -302,24 +285,14 @@ function runAllLowestPrice() {
       if (Date.now() - startTime > LP_TIMEOUT_MS) {
         props.setProperty('LP_BATCH_PROGRESS', JSON.stringify({ totalCount: totalCount, completedCount: completedCount }));
         writeLog('タイムアウト間近: ' + completedCount + '/' + totalCount + '件完了で打ち切り');
-        SpreadsheetApp.getUi().alert(
-          'タイムアウト',
-          completedCount + '/' + totalCount + '件完了。\n残りはメニューから再実行してください。',
-          SpreadsheetApp.getUi().ButtonSet.OK
-        );
-        return;
+        return { success: false, message: completedCount + '/' + totalCount + '件完了。\n残りはメニューから再実行してください。' };
       }
 
       // バッチ上限チェック
       if (i - startIndex >= LP_MAX_KEYWORDS_PER_RUN) {
         props.setProperty('LP_BATCH_PROGRESS', JSON.stringify({ totalCount: totalCount, completedCount: completedCount }));
         writeLog('バッチ上限(' + LP_MAX_KEYWORDS_PER_RUN + '件)到達');
-        SpreadsheetApp.getUi().alert(
-          'バッチ完了',
-          completedCount + '/' + totalCount + '件完了（' + LP_MAX_KEYWORDS_PER_RUN + '件/バッチ上限）。\n残りはメニューから再実行してください。',
-          SpreadsheetApp.getUi().ButtonSet.OK
-        );
-        return;
+        return { success: false, message: completedCount + '/' + totalCount + '件完了（' + LP_MAX_KEYWORDS_PER_RUN + '件/バッチ上限）。\n残りはメニューから再実行してください。' };
       }
 
       const input = allInputs[i];
@@ -334,7 +307,7 @@ function runAllLowestPrice() {
 
     props.deleteProperty('LP_BATCH_PROGRESS');
     writeLog('全件完了: ' + completedCount + '/' + totalCount + '件');
-    SpreadsheetApp.getUi().alert('✅ 完了: ' + completedCount + '件のキーワードを処理しました');
+    return { success: true, message: '✅ 完了: ' + completedCount + '件のキーワードを処理しました' };
 
   } finally {
     lock.releaseLock();
@@ -372,11 +345,6 @@ function lpSearchKeyword(input, startTime) {
     // 日次リクエスト上限チェック
     if (!lpCheckRequestLimit()) {
       writeLog('日次リクエスト上限（' + LP_MAX_DAILY_REQUESTS + '回）到達。処理停止。');
-      SpreadsheetApp.getUi().alert(
-        'リクエスト上限',
-        '本日のリクエスト上限（' + LP_MAX_DAILY_REQUESTS + '回）に達しました。\n明日再実行してください。',
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
       break;
     }
 

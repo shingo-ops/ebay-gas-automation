@@ -21,24 +21,6 @@
 function resetResearchFields(spreadsheetId) {
   try {
     const ss = getTargetSpreadsheetResearch(spreadsheetId);
-    const ui = SpreadsheetApp.getUi();
-
-    // 確認ダイアログを表示
-    const response = ui.alert(
-      'リサーチフィールドのリセット',
-      '以下の項目をリセットします。よろしいですか？\n\n' +
-      '・リサーチ方法\n' +
-      '・キーワード\n' +
-      '・目標利益率\n' +
-      '・カテゴリ',
-      ui.ButtonSet.YES_NO
-    );
-
-    // Noが選択された場合は中止
-    if (response !== ui.Button.YES) {
-      ss.toast('リセットをキャンセルしました', 'リセット', 3);
-      return;
-    }
 
     // リサーチシートを取得
     const researchSheet = ss.getSheetByName(SHEET_NAMES.RESEARCH);
@@ -92,19 +74,16 @@ function resetResearchFields(spreadsheetId) {
       Logger.log('クリア完了: ' + cell.name + ' (行' + cell.row + '列' + cell.col + ')');
     });
 
-    // 完了メッセージ
-    ui.alert(
-      'リセット完了',
-      'リサーチフィールドをリセットしました。\n\n' +
-      'クリアした項目: ' + cellsToClear.length + '件',
-      ui.ButtonSet.OK
-    );
-
     Logger.log('リサーチフィールドのリセット完了: ' + cellsToClear.length + '件');
+
+    return {
+      success: true,
+      message: 'リサーチフィールドをリセットしました。\n\nクリアした項目: ' + cellsToClear.length + '件'
+    };
 
   } catch (error) {
     Logger.log('resetResearchFieldsエラー: ' + error.toString());
-    SpreadsheetApp.getUi().alert('リセットエラー:\n\n' + error.toString());
+    return { success: false, message: 'リセットエラー:\n\n' + error.toString() };
   }
 }
 

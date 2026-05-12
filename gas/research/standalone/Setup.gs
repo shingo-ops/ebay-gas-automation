@@ -36,7 +36,6 @@
  * 2回目以降は権限承認をスキップして、設定検証とAPI接続テストのみ実行されます。
  */
 function completeInitialSetup(spreadsheetId) {
-  const ui = SpreadsheetApp.getUi();
   const scriptProperties = PropertiesService.getScriptProperties();
 
   try {
@@ -50,11 +49,7 @@ function completeInitialSetup(spreadsheetId) {
       scriptProperties.deleteProperty('EBAY_ACCESS_TOKEN');
       scriptProperties.deleteProperty('EBAY_TOKEN_EXPIRY');
 
-      ui.alert(
-        'ステップ 1/3: 権限承認',
-        '必要な権限を確認しています...\n\n次のダイアログで「許可」をクリックしてください。',
-        ui.ButtonSet.OK
-      );
+      Logger.log('ステップ1: 権限確認開始');
 
       // スプレッドシート権限
       const sheet = getTargetSpreadsheetResearch(spreadsheetId).getSheetByName(SHEET_NAMES.SETTINGS);
@@ -80,12 +75,7 @@ function completeInitialSetup(spreadsheetId) {
     }
 
     // ステップ2: 設定検証
-    ui.alert(
-      'ステップ 2/3: 設定検証',
-      '設定内容を確認しています...',
-      ui.ButtonSet.OK
-    );
-
+    Logger.log('ステップ2: 設定検証開始');
     const validation = validateConfig();
     let validationMessage = '';
 
@@ -98,12 +88,7 @@ function completeInitialSetup(spreadsheetId) {
     }
 
     // ステップ3: eBay API初期設定
-    ui.alert(
-      'ステップ 3/3: eBay API接続',
-      'eBay APIに接続してトークンを取得しています...\n\nこれには数秒かかる場合があります。',
-      ui.ButtonSet.OK
-    );
-
+    Logger.log('ステップ3: eBay API接続開始');
     let ebayApiMessage = '';
     try {
       // OAuthトークンを取得
@@ -176,37 +161,16 @@ function completeInitialSetup(spreadsheetId) {
       completionMessage = '✅ 設定検証完了\n' + ebayApiMessage + '\n' + logTriggerMessage + '\n\n' + validationMessage;
     }
 
-    ui.alert(
-      isFirstTime ? '🎉 初期設定完了！' : '✅ 設定確認完了',
-      completionMessage + '\n\n' +
-      '【次のステップ】\n' +
-      '1. スプレッドシートをリロード（F5キー）\n' +
-      '2. リサーチシートの図形ボタン（Expedited/Economy/書状）で出品開始',
-      ui.ButtonSet.OK
-    );
-
     return {
       success: true,
-      message: '初期設定が完了しました'
+      message: (isFirstTime ? '🎉 初期設定完了！' : '✅ 設定確認完了') + '\n\n' + completionMessage
     };
 
   } catch (error) {
     Logger.log('初期設定エラー: ' + error.toString());
-
-    ui.alert(
-      '初期設定エラー',
-      '初期設定中にエラーが発生しました。\n\n' +
-      '以下を確認してください:\n' +
-      '1. ツール設定シートの必須項目が全て入力されているか\n' +
-      '2. 出品シートのスプレッドシートIDが正しいか\n' +
-      '3. インターネット接続が正常か\n\n' +
-      '修正後、図形ボタンから再度初期設定を実行してください。',
-      ui.ButtonSet.OK
-    );
-
     return {
       success: false,
-      message: 'エラー: 初期設定に失敗しました'
+      message: '初期設定エラー: ' + error.toString()
     };
   }
 }
@@ -238,36 +202,17 @@ function authorizePermissions(spreadsheetId) {
     const testUrl = 'https://www.google.com';
     UrlFetchApp.fetch(testUrl, { muteHttpExceptions: true });
 
-    // 成功メッセージを表示
-    SpreadsheetApp.getUi().alert(
-      '権限承認完了',
-      '✅ すべての権限が正常に承認されました。\n\nこれで画像ダウンロード機能を含む全機能が使用できます。',
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-
     Logger.log('権限承認完了');
     return {
       success: true,
-      message: '権限承認が完了しました'
+      message: '✅ すべての権限が正常に承認されました。'
     };
 
   } catch (error) {
     Logger.log('権限承認エラー: ' + error.toString());
-
-    SpreadsheetApp.getUi().alert(
-      '権限承認エラー',
-      '権限の承認中にエラーが発生しました。\n\n' +
-      '以下を確認してください:\n' +
-      '1. Googleアカウントでログインしているか\n' +
-      '2. スプレッドシートの編集権限があるか\n' +
-      '3. ポップアップブロックが無効になっているか\n\n' +
-      '修正後、図形ボタンから再度権限承認を実行してください。',
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-
     return {
       success: false,
-      message: 'エラー: 権限承認に失敗しました'
+      message: '権限承認エラー: ' + error.toString()
     };
   }
 }
@@ -277,8 +222,6 @@ function authorizePermissions(spreadsheetId) {
  * 画像ボタンの設定手順を説明
  */
 function showAuthorizationGuide() {
-  const ui = SpreadsheetApp.getUi();
-
   const message = '【初回利用時の権限承認手順】\n\n' +
     '1. リサーチシートの「権限承認」ボタンをクリック\n' +
     '2. 「承認が必要です」ダイアログが表示されます\n' +
@@ -295,7 +238,7 @@ function showAuthorizationGuide() {
     '4. OKをクリック\n\n' +
     '設定完了後、画像をクリックすると権限承認が開始されます。';
 
-  ui.alert('権限承認ガイド', message, ui.ButtonSet.OK);
+  return { success: true, message: message };
 }
 
 // ==========================================
@@ -332,7 +275,7 @@ function setupOnEditTrigger(spreadsheetId) {
   Logger.log('✅ handleEdit関数をonEditトリガーとして登録しました');
 
   // eBay最安値検索のonEditトリガーを登録
-  setupLowestPriceTrigger();
+  setupLowestPriceTrigger(spreadsheetId);
 }
 
 /**
@@ -343,31 +286,24 @@ function setupOnEditTrigger(spreadsheetId) {
 function resetInitialSetupFlag() {
   const scriptProperties = PropertiesService.getScriptProperties();
   scriptProperties.deleteProperty('INITIAL_SETUP_COMPLETED');
-
-  SpreadsheetApp.getUi().alert(
-    'リセット完了',
-    '初回セットアップフラグをリセットしました。\n\n次回の completeInitialSetup() 実行時に、権限承認から再度実行されます。',
-    SpreadsheetApp.getUi().ButtonSet.OK
-  );
-
   Logger.log('初回セットアップフラグをリセットしました');
+  return { success: true, message: '初回セットアップフラグをリセットしました。\n\n次回の completeInitialSetup() 実行時に、権限承認から再度実行されます。' };
 }
 
 /**
  * 初期セットアップを実行
  */
-function initialSetup() {
+function initialSetup(spreadsheetId) {
   try {
     // 設定を検証
     const validation = validateConfig();
 
     if (!validation.isValid) {
-      const errorMessage = '設定エラー:\n' + validation.errors.join('\n');
-      SpreadsheetApp.getUi().alert(errorMessage);
-      return;
+      return { success: false, message: '設定エラー:\n' + validation.errors.join('\n') };
     }
 
     // 必要なシートが存在するか確認
+    const ss = getTargetSpreadsheetResearch(spreadsheetId);
     const requiredSheets = [SHEET_NAMES.SETTINGS, SHEET_NAMES.RESEARCH];
     const missingSheets = [];
 
@@ -385,11 +321,11 @@ function initialSetup() {
     const token = getOAuthToken();
     Logger.log('OAuthトークンを取得しました');
 
-    SpreadsheetApp.getUi().alert('セットアップが完了しました');
+    return { success: true, message: 'セットアップが完了しました' };
 
   } catch (error) {
     Logger.log('セットアップエラー: ' + error.toString());
-    SpreadsheetApp.getUi().alert('セットアップエラー: ' + error.toString());
+    return { success: false, message: 'セットアップエラー: ' + error.toString() };
   }
 }
 
@@ -413,10 +349,10 @@ function showConfig() {
       message += '\nエラー:\n' + validation.errors.join('\n');
     }
 
-    SpreadsheetApp.getUi().alert(message);
+    return { success: true, message: message };
 
   } catch (error) {
-    SpreadsheetApp.getUi().alert('設定の取得に失敗しました: ' + error.toString());
+    return { success: false, message: '設定の取得に失敗しました: ' + error.toString() };
   }
 }
 
@@ -428,14 +364,13 @@ function checkConfig() {
     const validation = validateConfig();
 
     if (validation.isValid) {
-      SpreadsheetApp.getUi().alert('設定は正常です ✓');
+      return { success: true, message: '設定は正常です ✓' };
     } else {
-      const errorMessage = '設定エラー:\n\n' + validation.errors.join('\n');
-      SpreadsheetApp.getUi().alert(errorMessage);
+      return { success: false, message: '設定エラー:\n\n' + validation.errors.join('\n') };
     }
 
   } catch (error) {
-    SpreadsheetApp.getUi().alert('検証エラー: ' + error.toString());
+    return { success: false, message: '検証エラー: ' + error.toString() };
   }
 }
 
@@ -460,7 +395,7 @@ function checkConfig() {
  */
 function handleEdit(e) {
   // ロック取得（二重実行防止）
-  const lock = LockService.getScriptLock();
+  const lock = LockService.getUserLock();
   if (!lock.tryLock(0)) {
     Logger.log('他の処理が実行中のためスキップ');
     return;
@@ -485,6 +420,7 @@ function handleEdit(e) {
       return;
     }
 
+    const spreadsheetId = e.source.getId();
     const sheet = e.source.getActiveSheet();
     const range = e.range;
     const editedRow = range.getRow();
@@ -516,13 +452,13 @@ function handleEdit(e) {
         Logger.log('URLが空なのでカテゴリ情報・状態プルダウンをクリア');
         sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.CATEGORY_ID.col).setValue('');
         sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.CATEGORY_NAME.col).setValue('');
-        setConditionDropdown('', sheet);
+        setConditionDropdown(spreadsheetId, '', sheet);
         return;
       }
 
       // カテゴリ情報を自動取得（fetchCategoryFromUrl 内で状態プルダウンも生成）
       Logger.log('fetchCategoryFromUrl を呼び出します');
-      fetchCategoryFromUrl(url.toString(), sheet);
+      fetchCategoryFromUrl(spreadsheetId, url.toString(), sheet);
 
     // D8セル（スペックURL）の編集 → スペック情報をAPIで取得して_cacheに保存
     } else if (editedCol === RESEARCH_ITEM_LIST.COLUMNS.SPEC_URL.col) {
@@ -534,13 +470,13 @@ function handleEdit(e) {
         return;
       }
 
-      fetchSpecFromUrl(specUrl.toString(), sheet);
+      fetchSpecFromUrl(spreadsheetId, specUrl.toString(), sheet);
 
     // G8セル（カテゴリID）の手動編集 → 状態プルダウンを更新
     } else if (editedCol === RESEARCH_ITEM_LIST.COLUMNS.CATEGORY_ID.col) {
       const categoryId = range.getValue();
       Logger.log('✅ カテゴリIDセル編集を検知: ' + categoryId);
-      setConditionDropdown(categoryId ? categoryId.toString() : '', sheet);
+      setConditionDropdown(spreadsheetId, categoryId ? categoryId.toString() : '', sheet);
 
     } else {
       Logger.log('対象セル以外なのでスキップ（行=' + editedRow + ', 列=' + editedCol + '）');
@@ -670,24 +606,10 @@ function fetchSpecFromUrl(spreadsheetId, url, sheet) {
     Logger.log('[Spec] 照合: キャッシュ(既存)="' + existingCategoryId + '", 取得="' + newCategoryId + '"');
 
     if (existingCategoryId && existingCategoryId !== newCategoryId) {
-      // 3a. カテゴリ不一致 → 確認ダイアログ
-      const ui = SpreadsheetApp.getUi();
-      const response = ui.alert(
-        'カテゴリID変更の確認',
-        '現在のキャッシュと異なるカテゴリIDです。差し替えますか？\n\n' +
-        '既存: ' + existingCategoryId + ' (' + existingCategoryName + ')\n' +
-        '新規: ' + newCategoryId + ' (' + newCategoryName + ')',
-        ui.ButtonSet.YES_NO
-      );
+      // 3a. カテゴリ不一致 → 確認なしで差し替え（バインドスクリプト側で確認済み想定）
+      Logger.log('[Spec] カテゴリ不一致 → 新カテゴリに差し替え: ' + existingCategoryId + ' → ' + newCategoryId);
 
-      if (response !== ui.Button.YES) {
-        // NO → 何もせずスペックURLをクリアして終了
-        sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.SPEC_URL.col).clearContent();
-        ss.toast('キャンセルしました', '', 2);
-        return;
-      }
-
-      // YES → _cache の category_id / category_name / item_specs_json を更新
+      // _cache の category_id / category_name / item_specs_json を更新
       updateCacheRow2({
         categoryId:   newCategoryId,
         categoryName: newCategoryName,
@@ -714,11 +636,7 @@ function fetchSpecFromUrl(spreadsheetId, url, sheet) {
             : [];
           if (validOptions.indexOf(oldConditionValue) === -1) {
             conditionCell.clearContent();
-            SpreadsheetApp.getUi().alert(
-              'コンディション再選択',
-              '選択されていた「' + oldConditionValue + '」は新しいカテゴリでは使用できません。\nプルダウンから再度選択してください。',
-              SpreadsheetApp.getUi().ButtonSet.OK
-            );
+            Logger.log('[Spec] 旧コンディション値「' + oldConditionValue + '」は新カテゴリでは使用できないためクリアしました');
           }
         }
       }
@@ -764,33 +682,27 @@ function testOnEdit(spreadsheetId) {
     const sheet = ss.getSheetByName(SHEET_NAMES.RESEARCH);
 
     if (!sheet) {
-      SpreadsheetApp.getUi().alert('リサーチシートが見つかりません');
-      return;
+      return { success: false, message: 'リサーチシートが見つかりません' };
     }
 
     // B8セルからURLを取得
     const url = sheet.getRange(RESEARCH_ITEM_LIST.DATA_ROW, RESEARCH_ITEM_LIST.COLUMNS.ITEM_URL.col).getValue();
 
     if (!url || url.toString().trim() === '') {
-      SpreadsheetApp.getUi().alert('Item URL（B8セル）が入力されていません');
-      return;
+      return { success: false, message: 'Item URL（B8セル）が入力されていません' };
     }
 
     Logger.log('=== onEditトリガーテスト ===');
     Logger.log('Item URL: ' + url);
 
     // カテゴリ情報を取得
-    fetchCategoryFromUrl(url.toString(), sheet);
+    fetchCategoryFromUrl(spreadsheetId, url.toString(), sheet);
 
-    SpreadsheetApp.getUi().alert(
-      '✅ テスト完了',
-      'カテゴリ情報を取得しました。\n\nG8セル（カテゴリID）とH8セル（カテゴリ名）を確認してください。',
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
+    return { success: true, message: '✅ テスト完了\nカテゴリ情報を取得しました。G8セル（カテゴリID）とH8セル（カテゴリ名）を確認してください。' };
 
   } catch (error) {
     Logger.log('testOnEditエラー: ' + error.toString());
-    SpreadsheetApp.getUi().alert('エラー', error.toString(), SpreadsheetApp.getUi().ButtonSet.OK);
+    return { success: false, message: error.toString() };
   }
 }
 

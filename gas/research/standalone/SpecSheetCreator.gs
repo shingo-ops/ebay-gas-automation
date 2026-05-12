@@ -15,18 +15,6 @@ function createSpecSheets(spreadsheetId) {
     const existingTechSpec = ss.getSheetByName('仕様書（技術）');
 
     if (existingUserSpec || existingTechSpec) {
-      const ui = SpreadsheetApp.getUi();
-      const response = ui.alert(
-        '仕様書シートの作成',
-        '既存の仕様書シートを削除して再作成しますか？',
-        ui.ButtonSet.OK_CANCEL
-      );
-
-      if (response !== ui.Button.OK) {
-        ss.toast('キャンセルしました', '仕様書シート作成');
-        return;
-      }
-
       if (existingUserSpec) existingUserSpec.activate();
       if (existingUserSpec) ss.deleteSheet(existingUserSpec);
       if (existingTechSpec) existingTechSpec.activate();
