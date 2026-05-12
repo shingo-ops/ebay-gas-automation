@@ -219,7 +219,7 @@ function setConditionDropdown(spreadsheetId, categoryId, sheet) {
   }
 
   Logger.log('✅ 状態プルダウン設定: カテゴリID=' + categoryId + ' → グループ' + group + ' / ' + displayOptions.length + '件');
-  SpreadsheetApp.getActiveSpreadsheet().toast(
+  ss.toast(
     '状態プルダウンを設定しました（グループ' + group + ' / ' + displayOptions.length + '件）',
     '✅ 状態',
     2
