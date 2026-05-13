@@ -496,7 +496,7 @@ function prepareTransferDataWithMapping(spreadsheetId, itemInfo, specInfo, listi
   }
 
   // ストア画像 - ツール設定から取得
-  const config = getEbayConfig();
+  const config = getEbayConfigSA(spreadsheetId);
   setValueByHeader(LISTING_COLUMNS.STORE_IMAGE.header, config.storeImageUrl || '');
 
   // 出品タイムスタンプ（記録不要のため空）
@@ -700,7 +700,7 @@ function transferListingDataWithPolicy(spreadsheetId, policyRow, policyLabel, ca
     }
 
     // 転記先スプレッドシートを開く
-    const config = getEbayConfig();
+    const config = getEbayConfigSA(spreadsheetId);
     const listingSpreadsheetId = config.listingSpreadsheetId;
 
     if (!listingSpreadsheetId) {

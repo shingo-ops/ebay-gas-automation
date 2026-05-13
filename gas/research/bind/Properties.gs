@@ -28,6 +28,10 @@ function applyNewProps_(newProps) {
   if (!newProps || typeof newProps !== 'object') return;
   const scriptProps = PropertiesService.getScriptProperties();
   Object.keys(newProps).forEach(function(key) {
-    scriptProps.setProperty(key, String(newProps[key]));
+    if (newProps[key] === null) {
+      scriptProps.deleteProperty(key);
+    } else {
+      scriptProps.setProperty(key, String(newProps[key]));
+    }
   });
 }

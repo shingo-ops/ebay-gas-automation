@@ -131,17 +131,19 @@ function menuCreateSpecSheets() {
 
 /** 設定を表示 */
 function menuShowConfig() {
-  showResult_(ResearchLib.showConfig());
+  showResult_(ResearchLib.showConfig(getSsId_()));
 }
 
 /** 設定を検証 */
 function menuCheckConfig() {
-  showResult_(ResearchLib.checkConfig());
+  showResult_(ResearchLib.checkConfig(getSsId_()));
 }
 
 /** 初期設定フラグをリセット */
 function menuResetSetupFlag() {
-  showResult_(ResearchLib.resetInitialSetupFlag());
+  const result = ResearchLib.resetInitialSetupFlag();
+  applyNewProps_(result.newProps);
+  showResult_(result);
 }
 
 /** 権限承認ガイドを表示 */
