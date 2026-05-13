@@ -275,9 +275,11 @@ function runAllLowestPrice() {
     if (allInputs.length === 0) { return { success: false, message: '有効なキーワードがありません' }; }
 
     // バッチ進捗（前回中断分の続き）
+    // スプレッドシートIDをキーに含めて複数クライアント間の干渉を防ぐ
     const props = PropertiesService.getScriptProperties();
+    const batchKey = 'LP_BATCH_PROGRESS_' + (CURRENT_SPREADSHEET_ID || '').substring(0, 20);
     let startIndex = 0;
-    const saved = props.getProperty('LP_BATCH_PROGRESS');
+    const saved = props.getProperty(batchKey);
     if (saved) {
       try {
         const p = JSON.parse(saved);
@@ -295,14 +297,14 @@ function runAllLowestPrice() {
     for (let i = startIndex; i < allInputs.length; i++) {
       // タイムアウトチェック（330秒）
       if (Date.now() - startTime > LP_TIMEOUT_MS) {
-        props.setProperty('LP_BATCH_PROGRESS', JSON.stringify({ totalCount: totalCount, completedCount: completedCount }));
+        props.setProperty(batchKey, JSON.stringify({ totalCount: totalCount, completedCount: completedCount }));
         writeLog('タイムアウト間近: ' + completedCount + '/' + totalCount + '件完了で打ち切り');
         return { success: false, message: completedCount + '/' + totalCount + '件完了。\n残りはメニューから再実行してください。' };
       }
 
       // バッチ上限チェック
       if (i - startIndex >= LP_MAX_KEYWORDS_PER_RUN) {
-        props.setProperty('LP_BATCH_PROGRESS', JSON.stringify({ totalCount: totalCount, completedCount: completedCount }));
+        props.setProperty(batchKey, JSON.stringify({ totalCount: totalCount, completedCount: completedCount }));
         writeLog('バッチ上限(' + LP_MAX_KEYWORDS_PER_RUN + '件)到達');
         return { success: false, message: completedCount + '/' + totalCount + '件完了（' + LP_MAX_KEYWORDS_PER_RUN + '件/バッチ上限）。\n残りはメニューから再実行してください。' };
       }
@@ -317,7 +319,7 @@ function runAllLowestPrice() {
       completedCount++;
     }
 
-    props.deleteProperty('LP_BATCH_PROGRESS');
+    props.deleteProperty(batchKey);
     writeLog('全件完了: ' + completedCount + '/' + totalCount + '件');
     return { success: true, message: '✅ 完了: ' + completedCount + '件のキーワードを処理しました' };
 
@@ -985,11 +987,13 @@ function lpTodayKey() {
 }
 
 function lpCheckRequestLimit() {
-  return parseInt(PropertiesService.getScriptProperties().getProperty(lpTodayKey()) || '0') < LP_MAX_DAILY_REQUESTS;
+  var key = lpTodayKey() + '_' + (CURRENT_SPREADSHEET_ID || '').substring(0, 20);
+  return parseInt(PropertiesService.getScriptProperties().getProperty(key) || '0') < LP_MAX_DAILY_REQUESTS;
 }
 
 function lpIncrementRequestCount() {
-  const props = PropertiesService.getScriptProperties(), key = lpTodayKey();
+  var key = lpTodayKey() + '_' + (CURRENT_SPREADSHEET_ID || '').substring(0, 20);
+  var props = PropertiesService.getScriptProperties();
   props.setProperty(key, String(parseInt(props.getProperty(key) || '0') + 1));
 }
 
