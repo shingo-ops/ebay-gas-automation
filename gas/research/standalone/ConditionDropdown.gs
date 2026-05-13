@@ -27,17 +27,20 @@
  *
  * @returns {Spreadsheet|null}
  */
-function openCategoryMasterSs() {
-  const config = getEbayConfig();
-  const spreadsheetId = config.categoryMasterSpreadsheetId;
-
-  if (!spreadsheetId) {
-    Logger.log('⚠️ カテゴリマスタのスプレッドシートIDが設定されていません（ツール設定の「カテゴリマスタ」を確認）');
+function openCategoryMasterSs(targetSpreadsheetId) {
+  var ssId = targetSpreadsheetId || CURRENT_SPREADSHEET_ID;
+  if (!ssId) {
+    Logger.log('⚠️ openCategoryMasterSs: スプレッドシートIDが未設定です');
     return null;
   }
-
   try {
-    return SpreadsheetApp.openById(spreadsheetId);
+    var config = getEbayConfigSA(ssId);
+    var masterSsId = config.categoryMasterSpreadsheetId;
+    if (!masterSsId) {
+      Logger.log('⚠️ カテゴリマスタのスプレッドシートIDが設定されていません（ツール設定の「カテゴリマスタ」を確認）');
+      return null;
+    }
+    return SpreadsheetApp.openById(masterSsId);
   } catch (e) {
     Logger.log('❌ カテゴリマスタスプレッドシートを開けません: ' + e.toString());
     return null;
@@ -167,7 +170,7 @@ function setConditionDropdown(spreadsheetId, categoryId, sheet) {
     return;
   }
 
-  const categoryMasterSs = openCategoryMasterSs();
+  const categoryMasterSs = openCategoryMasterSs(spreadsheetId);
   if (!categoryMasterSs) {
     ss.toast(
       'カテゴリマスタが未設定のため状態プルダウンを生成できません。\nツール設定の「カテゴリマスタ」を確認してください。',
