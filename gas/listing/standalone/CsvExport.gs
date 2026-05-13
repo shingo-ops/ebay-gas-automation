@@ -19,6 +19,28 @@ const SELLSTA_CSV_HEADERS = [
   'Private Listing','Description','listing_date','Memo','Custom Link'
 ];
 
+// & 置換をスキップするURLフィールド（セルスタCSVにURLをそのまま渡す列）
+const SELLSTA_URL_HEADERS = {
+  'image_url1':true,'image_url2':true,'image_url3':true,'image_url4':true,
+  'image_url5':true,'image_url6':true,'image_url7':true,'image_url8':true,
+  'image_url9':true,'image_url10':true,'image_url11':true,'image_url12':true,
+  'image_url13':true,'image_url14':true,'image_url15':true,'image_url16':true,
+  'image_url17':true,'image_url18':true,'image_url19':true,'image_url20':true,
+  'image_url21':true,'image_url22':true,'image_url23':true,'image_url24':true,
+  '①仕入先情報':true,'②仕入先情報':true,'③仕入先情報':true,'Custom Link':true
+};
+
+/**
+ * セルスタCSV用テキストサニタイズ
+ * XMLエラーの原因となる & を "and" に置換する
+ * @param {string} val
+ * @returns {string}
+ */
+function sanitizeSellstaText_(val) {
+  if (typeof val !== 'string') return val;
+  return val.replace(/&/g, 'and');
+}
+
 /**
  * セルスタCSV出力メイン処理
  * @param {string} spreadsheetId 出品スプレッドシートID
@@ -169,6 +191,13 @@ function exportSellstaCsv(spreadsheetId) {
       rowData['listing_date']      = listingDate;
       rowData['Memo']              = getCellDisplay(disp, dbMap, 'メモ');
       rowData['Custom Link']       = getCellDisplay(disp, dbMap, '検索URL');
+
+      // & → "and" 一括サニタイズ（URLフィールドはスキップ）
+      SELLSTA_CSV_HEADERS.forEach(function(h) {
+        if (!SELLSTA_URL_HEADERS[h] && typeof rowData[h] === 'string') {
+          rowData[h] = sanitizeSellstaText_(rowData[h]);
+        }
+      });
 
       // csvMapを使ってシートの正しい列に書き込む
       SELLSTA_CSV_HEADERS.forEach(function(header) {

@@ -96,6 +96,10 @@ jobs:
           else
             SCRIPT_ID="${{ secrets.RESEARCH_SA_DEV }}"
           fi
+          if [ -z "$SCRIPT_ID" ]; then
+            echo "⚠️ SCRIPT_ID が未設定のためスキップ（RESEARCH_SA_PROD/DEV シークレットを確認してください）"
+            exit 0
+          fi
           sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
           clasp push --force
 
@@ -125,6 +129,10 @@ jobs:
           else
             SCRIPT_ID="${{ secrets.RESEARCH_BIND_DEV }}"
             SA_SCRIPT_ID="${{ secrets.RESEARCH_SA_DEV }}"
+          fi
+          if [ -z "$SCRIPT_ID" ]; then
+            echo "⚠️ SCRIPT_ID が未設定のためスキップ（RESEARCH_BIND_PROD/DEV シークレットを確認してください）"
+            exit 0
           fi
           sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
           sed -i "s/RESEARCH_SA_SCRIPT_ID/$SA_SCRIPT_ID/" appsscript.json
