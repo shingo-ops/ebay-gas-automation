@@ -203,6 +203,17 @@ function menuCreateListing(spreadsheetId, rowNumber) {
 }
 
 /**
+ * 【HARU CSV出力】
+ * 出品DB から HARU形式CSV を生成して HARU_CSV シートに書き込む
+ *
+ * @param {string} spreadsheetId スプレッドシートID
+ * @returns {{ success: boolean, message: string, downloadUrl?: string, fileName?: string }}
+ */
+function menuExportHaruCsv(spreadsheetId) {
+  return exportHaruCsv(spreadsheetId);
+}
+
+/**
  * 設定確認（ログ出力）
  *
  * @param {string} spreadsheetId スプレッドシートID（省略時はデフォルト使用）
