@@ -4,27 +4,20 @@
     "libraries": [
       {
         "userSymbol": "ResearchLib",
-        "libraryId": "1oTNviFtVqWzoHJs5WNwUNZcsm0e1-eQzzDd7gRGYHE8dFHEviyGPbZXe",
+        "libraryId": "RESEARCH_SA_SCRIPT_ID",
         "version": "0",
         "developmentMode": true
       }
     ]
   },
   "exceptionLogging": "STACKDRIVER",
-  "executionApi": {
-    "access": "ANYONE"
-  },
   "runtimeVersion": "V8",
   "oauthScopes": [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/script.external_request",
     "https://www.googleapis.com/auth/script.scriptapp",
+    "https://www.googleapis.com/auth/script.storage",
     "https://www.googleapis.com/auth/script.container.ui"
-  ],
-  "webapp": {
-    "executeAs": "USER_DEPLOYING",
-    "access": "MYSELF"
-  }
+  ]
 }
