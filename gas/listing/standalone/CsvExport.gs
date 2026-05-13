@@ -448,3 +448,248 @@ function convertTimestamp(ts) {
     return ts;
   } catch (e) { return ts; }
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// HARU CSV 出力
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// HARU CSV ヘッダー定義（HARUサンプルCSVのヘッダーと同一順序・同一表記）
+const HARU_CSV_HEADERS = [
+  '*店舗名',
+  '商品名',
+  'eBay Item Number',
+  '仕入URL',
+  'eBayURL',
+  '仕入価格',
+  '*仕入価格-マッチ(1 or 0)',
+  '仕入送料',
+  '在庫ワード',
+  '*在庫ワード-マッチ(1 or 0)',
+  '*Watchモード(ON:1 or OFF:0)',
+  'eBay送料',
+  '期待利益',
+  '手数料係数',
+  'eBay価格',
+  'メモ',
+  '*チェックロジック',
+  '*eBay自動連携機能(ON:1 or OFF:0)',
+  'eBay Qty',
+  '*Watchモード在庫なし判定(ON:1 or OFF:0)'
+];
+
+// HARU CSV 固定値列（出品DBの値ではなく固定値を使用）
+const HARU_FIXED_VALUES = {
+  '*仕入価格-マッチ(1 or 0)':              '1',
+  '*在庫ワード-マッチ(1 or 0)':            '1',
+  '*Watchモード(ON:1 or OFF:0)':           '1',
+  'eBay送料':                              '',
+  '手数料係数':                             '13.25', // 一般カテゴリFVF（category_masterで動的取得に将来変更可能）
+  '*チェックロジック':                      '0',
+  '*eBay自動連携機能(ON:1 or OFF:0)':      '1',
+  '*Watchモード在庫なし判定(ON:1 or OFF:0)': '1'
+};
+
+// HARU CSV DB列マッピング（HARU列名 → 出品DBの列ヘッダー名）
+const HARU_DB_COLUMNS = {
+  '*店舗名':          '仕入元①',
+  '商品名':           'タイトル',
+  'eBay Item Number': 'Item ID',
+  '仕入URL':          '仕入元URL①',
+  'eBayURL':          '出品URL',
+  '仕入価格':         '仕入値(¥)',
+  '仕入送料':         '仕入れ送料',      // 出品DBに列がない場合は空文字（任意列）
+  '在庫ワード':       '仕入れキーワード',
+  '期待利益':         '還付抜き利益率',  // 小数形式（0.25 = 25%）で出力
+  'eBay価格':         '売値($)',
+  'メモ':             'メモ',
+  'eBay Qty':         '個数'
+};
+
+/**
+ * HARU CSV出力メイン処理
+ * @param {string} spreadsheetId 出品スプレッドシートID
+ * @returns {{ success: boolean, message: string, downloadUrl: string, fileName: string }}
+ */
+function exportHaruCsv(spreadsheetId) {
+  try {
+    Logger.log('=== HARU CSV出力開始 ===');
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+
+    // 出品DBを開く
+    const config = getEbayConfig();
+    const outputDbId = config.outputDbSpreadsheetId;
+    if (!outputDbId) {
+      Logger.log('❌ exportHaruCsv 失敗: 出品DBが設定されていません');
+      return { success: false, message: '出品DBが設定されていません。ツール設定を確認してください。' };
+    }
+    const outputSS    = SpreadsheetApp.openById(outputDbId);
+    const outputSheet = outputSS.getSheetByName('出品');
+    if (!outputSheet) {
+      Logger.log('❌ exportHaruCsv 失敗: 出品DBに「出品」シートが見つかりません');
+      return { success: false, message: '出品DBに「出品」シートが見つかりません。' };
+    }
+
+    // 出品DBのヘッダーマッピング
+    const lastCol    = outputSheet.getLastColumn();
+    const lastRow    = outputSheet.getLastRow();
+    const dbHeaderRow = outputSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const dbMap = {};
+    dbHeaderRow.forEach(function(h, i) { if (h) dbMap[String(h).trim()] = i; });
+
+    // 必須列の存在チェック
+    const requiredDbCols = ['出品ステータス', '出品URL', 'HARU', 'Item ID', 'タイトル', '売値($)', '個数'];
+    const missingDbCols = requiredDbCols.filter(function(c) { return dbMap[c] === undefined; });
+    if (missingDbCols.length > 0) {
+      Logger.log('❌ exportHaruCsv 失敗: 出品DBに列が見つかりません: ' + missingDbCols.join(', '));
+      return { success: false, message: '出品DBに以下の列が見つかりません:\n' + missingDbCols.join('\n') };
+    }
+
+    // HARU_CSVシートの取得
+    const haruSheet = outputSS.getSheetByName('HARU_CSV');
+    if (!haruSheet) {
+      Logger.log('❌ exportHaruCsv 失敗: 出品DBに「HARU_CSV」シートが見つかりません');
+      return { success: false, message: '出品DBに「HARU_CSV」シートが見つかりません。' };
+    }
+    const haruLastCol   = haruSheet.getLastColumn();
+    const haruHeaderRow = haruSheet.getRange(1, 1, 1, Math.max(haruLastCol, 1)).getValues()[0];
+    const haruMap = {};
+    haruHeaderRow.forEach(function(h, i) { if (h) haruMap[String(h).trim()] = i + 1; }); // 1-based
+
+    // HARU_CSVシートの必須ヘッダー存在チェック
+    const missingHaruHeaders = HARU_CSV_HEADERS.filter(function(h) { return haruMap[h] === undefined; });
+    if (missingHaruHeaders.length > 0) {
+      Logger.log('❌ exportHaruCsv 失敗: HARU_CSVシートにヘッダーが見つかりません: ' + missingHaruHeaders.join(', '));
+      return {
+        success: false,
+        message: '「HARU_CSV」シートに以下のヘッダーが見つかりません:\n' + missingHaruHeaders.join('\n')
+      };
+    }
+    Logger.log('HARU_CSVシートのヘッダーチェック完了');
+
+    // データ行を全取得（5行目以降）
+    if (lastRow < 5) {
+      Logger.log('❌ exportHaruCsv 失敗: 出品DBにデータがありません（lastRow=' + lastRow + '）');
+      return { success: false, message: '出品DBにデータがありません（5行目以降にデータが必要）。' };
+    }
+    const dataValues  = outputSheet.getRange(5, 1, lastRow - 4, lastCol).getValues();
+    const dataDisplay = outputSheet.getRange(5, 1, lastRow - 4, lastCol).getDisplayValues();
+
+    // フィルタ: 出品ステータス=出品中 & 出品URL≠空 & HARU列空
+    const statusIdx = dbMap['出品ステータス'];
+    const urlIdx    = dbMap['出品URL'];
+    const haruIdx   = dbMap['HARU'];
+
+    const targetRows = [];
+    dataValues.forEach(function(row, i) {
+      const status = String(row[statusIdx] || '').trim();
+      const url    = String(row[urlIdx]    || '').trim();
+      const haru   = String(row[haruIdx]   || '').trim();
+      if (status === '出品中' && url !== '' && haru === '') {
+        targetRows.push({ rowIndex: i + 5, disp: dataDisplay[i] });
+      }
+    });
+
+    Logger.log('対象行数: ' + targetRows.length + '件');
+    if (targetRows.length === 0) {
+      Logger.log('❌ exportHaruCsv 失敗: 出力対象のデータがありません');
+      return { success: false, message: '出力対象のデータがありません。\n条件: 出品ステータス=出品中、出品URLあり、HARU列が空' };
+    }
+
+    // HARU_CSVシートの既存データの最終行を取得（追記位置）
+    const haruSheetLastRow = haruSheet.getLastRow();
+    let writeRow = haruSheetLastRow < 1 ? 2 : haruSheetLastRow + 1;
+    if (writeRow < 2) writeRow = 2;
+
+    // 各対象行を変換してシートに追記
+    const now      = new Date();
+    const haruMark = 'HARU/' + formatTimestampForCsv(now);
+    const writtenDbRows = [];
+
+    targetRows.forEach(function(target) {
+      const disp = target.disp;
+      const rowData = {};
+
+      // DB列から取得するフィールドをセット
+      Object.keys(HARU_DB_COLUMNS).forEach(function(haruCol) {
+        rowData[haruCol] = getCellDisplay(disp, dbMap, HARU_DB_COLUMNS[haruCol]);
+      });
+
+      // 固定値フィールドで上書き
+      Object.keys(HARU_FIXED_VALUES).forEach(function(haruCol) {
+        rowData[haruCol] = HARU_FIXED_VALUES[haruCol];
+      });
+
+      // haruMapを使ってシートの正しい列に書き込む
+      HARU_CSV_HEADERS.forEach(function(header) {
+        const colNum = haruMap[header];
+        if (!colNum) return;
+        haruSheet.getRange(writeRow, colNum).setValue(
+          rowData[header] !== undefined ? rowData[header] : ''
+        );
+      });
+
+      writtenDbRows.push(target.rowIndex);
+      writeRow++;
+    });
+
+    Logger.log('HARU_CSVシート書き込み完了: ' + writtenDbRows.length + '件');
+
+    // 出品DBのHARU列にタイムスタンプを書き込む
+    writtenDbRows.forEach(function(rowNum) {
+      outputSheet.getRange(rowNum, haruIdx + 1).setValue(haruMark);
+    });
+    Logger.log('HARU列更新完了: ' + haruMark);
+
+    // GoogleドライブにCSVバックアップを保存
+    const csvContent  = buildCsvContent(haruSheet);
+    const fileName    = 'haru_' + formatDateForFilename(now) + '.csv';
+    const folder      = getOrCreateBackupFolder();
+    const bom         = '\uFEFF';
+    const blob        = Utilities.newBlob(bom + csvContent, 'text/csv', fileName);
+    const file        = folder.createFile(blob);
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch(sharingErr) {
+      Logger.log('⚠️ 共有設定スキップ（権限不足）: ' + sharingErr.toString());
+    }
+    const downloadUrl = 'https://drive.google.com/uc?export=download&id=' + file.getId();
+
+    Logger.log('✅ バックアップ保存完了: ' + downloadUrl);
+
+    return {
+      success:     true,
+      message:     writtenDbRows.length + '件のデータを出力しました。',
+      downloadUrl: downloadUrl,
+      fileName:    fileName
+    };
+
+  } catch(e) {
+    Logger.log('❌ HARU CSV出力エラー: ' + e.toString());
+    return { success: false, message: 'HARU CSV出力エラー: ' + e.toString() };
+  } finally {
+    CURRENT_SPREADSHEET_ID = null;
+  }
+}
+
+/**
+ * ダウンロード完了後にHARU_CSVシートをクリア（ヘッダー行は保持）
+ * container/Code.gs から呼び出す
+ */
+function clearHaruCsvSheet(spreadsheetId) {
+  try {
+    if (spreadsheetId) CURRENT_SPREADSHEET_ID = spreadsheetId;
+    const config   = getEbayConfig();
+    const outputSS = SpreadsheetApp.openById(config.outputDbSpreadsheetId);
+    const haruSheet = outputSS.getSheetByName('HARU_CSV');
+    if (!haruSheet) return;
+    const lastRow = haruSheet.getLastRow();
+    if (lastRow > 1) {
+      haruSheet.getRange(2, 1, lastRow - 1, haruSheet.getLastColumn()).clearContent();
+    }
+    Logger.log('✅ HARU_CSVシートクリア完了');
+  } catch(e) {
+    Logger.log('⚠️ クリアエラー: ' + e.toString());
+  } finally {
+    CURRENT_SPREADSHEET_ID = null;
+  }
+}
