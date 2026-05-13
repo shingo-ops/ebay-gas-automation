@@ -40,7 +40,10 @@ function initialSetupWithConfirm_() {
   // ssId を保存（毎日自動実行トリガー用）
   PropertiesService.getScriptProperties().setProperty('TARGET_SS_ID', ssId);
 
-  showResult_(ResearchLib.completeInitialSetup(ssId));
+  const propsData = getPropsData_();
+  const result = ResearchLib.completeInitialSetup(ssId, propsData);
+  applyNewProps_(result.newProps);
+  showResult_(result);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

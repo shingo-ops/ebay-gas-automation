@@ -35,135 +35,133 @@
  * 初回利用時にこのボタンを1回押すだけで、すべての初期設定が完了します。
  * 2回目以降は権限承認をスキップして、設定検証とAPI接続テストのみ実行されます。
  */
-function completeInitialSetup(spreadsheetId) {
-  const scriptProperties = PropertiesService.getScriptProperties();
+/**
+ * @param {string} spreadsheetId
+ * @param {Object=} propsData バインドスクリプトの ScriptProperties の plain object
+ *                            (省略時は {} として扱う)
+ * @returns {{ success: boolean, message: string, newProps?: Object }}
+ */
+function completeInitialSetup(spreadsheetId, propsData) {
+  var props = propsData || {};
 
   try {
     // 初回セットアップ完了フラグを確認
-    const isFirstTime = !scriptProperties.getProperty('INITIAL_SETUP_COMPLETED');
+    var isFirstTime = !checkInitialSetupSA(props).isDone;
+    var newProps = {};
 
     // ステップ1: 権限承認（初回のみ）
     if (isFirstTime) {
-      // ✅ 修正：トークンキャッシュを明示的に削除（コピー先スプレッドシート対策）
+      // トークンキャッシュを明示的に削除（コピー先スプレッドシート対策）
       Logger.log('初回セットアップ: トークンキャッシュをクリアします');
-      scriptProperties.deleteProperty('EBAY_ACCESS_TOKEN');
-      scriptProperties.deleteProperty('EBAY_TOKEN_EXPIRY');
+      var clearResult = clearOAuthTokenSA();
+      Object.assign(newProps, clearResult.newProps);
 
       Logger.log('ステップ1: 権限確認開始');
 
       // スプレッドシート権限
-      const sheet = getTargetSpreadsheetResearch(spreadsheetId).getSheetByName(SHEET_NAMES.SETTINGS);
-      const testValue = sheet.getRange('A1').getValue();
+      var sheet = getTargetSpreadsheetResearch(spreadsheetId).getSheetByName(SHEET_NAMES.SETTINGS);
+      var testValue = sheet.getRange('A1').getValue();
 
       // Googleドライブ権限
-      const folders = DriveApp.getFolders();
+      var folders = DriveApp.getFolders();
       if (folders.hasNext()) {
-        const folder = folders.next();
-        Logger.log('フォルダ確認: ' + folder.getName());
+        Logger.log('フォルダ確認: ' + folders.next().getName());
       }
 
       // 外部URL取得権限
-      const testUrl = 'https://www.google.com';
-      UrlFetchApp.fetch(testUrl, { muteHttpExceptions: true });
+      UrlFetchApp.fetch('https://www.google.com', { muteHttpExceptions: true });
 
       Logger.log('ステップ1完了: 権限承認成功');
 
-      // 初回セットアップ完了フラグを保存
-      scriptProperties.setProperty('INITIAL_SETUP_COMPLETED', 'true');
+      // 初回セットアップ完了フラグを保存（newProps に追加）
+      var markResult = markInitialSetupCompleteSA();
+      Object.assign(newProps, markResult.newProps);
     } else {
       Logger.log('権限承認済みのため、ステップ1をスキップします');
     }
 
     // ステップ2: 設定検証
     Logger.log('ステップ2: 設定検証開始');
-    const validation = validateConfig();
-    let validationMessage = '';
+    var validation = validateConfigSA(spreadsheetId);
+    var validationMessage = validation.isValid
+      ? '✅ 設定は正常です'
+      : '⚠️ 設定に不足があります:\n' + validation.errors.join('\n');
+    Logger.log('ステップ2完了: ' + (validation.isValid ? '成功' : validationMessage));
 
-    if (validation.isValid) {
-      validationMessage = '✅ 設定は正常です';
-      Logger.log('ステップ2完了: 設定検証成功');
-    } else {
-      validationMessage = '⚠️ 設定に不足があります:\n' + validation.errors.join('\n');
-      Logger.log('ステップ2警告: ' + validationMessage);
-    }
-
-    // ステップ3: eBay API初期設定
+    // ステップ3: eBay API接続テスト
     Logger.log('ステップ3: eBay API接続開始');
-    let ebayApiMessage = '';
+    var ebayApiMessage = '';
     try {
-      // OAuthトークンを取得
-      const token = getOAuthToken();
-      Logger.log('OAuthトークン取得成功');
-
-      // eBay APIへのテスト接続（Browse APIで簡易テスト）
-      const config = getEbayConfig();
-      const testApiUrl = config.getBrowseApiUrl() + '/item/get_item_by_legacy_id?legacy_item_id=123456789012';
-      const testOptions = {
-        method: 'get',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
-        },
-        muteHttpExceptions: true
-      };
-
-      const testResponse = UrlFetchApp.fetch(testApiUrl, testOptions);
-      const statusCode = testResponse.getResponseCode();
-
-      // ステータスコード200または404であればAPI接続は成功（404は商品が存在しないだけ）
-      if (statusCode === 200 || statusCode === 404) {
-        ebayApiMessage = '✅ eBay API接続成功';
-        Logger.log('ステップ3完了: eBay API接続成功（ステータスコード: ' + statusCode + '）');
-      } else if (statusCode === 401) {
-        ebayApiMessage = '⚠️ eBay API認証エラー（App ID/Cert IDを確認してください）';
-        Logger.log('ステップ3警告: 認証エラー（401）');
+      var ebayConfig = getEbayConfigSA(spreadsheetId);
+      var tokenResult = getOAuthTokenSA(props, ebayConfig);
+      if (!tokenResult.success) {
+        ebayApiMessage = '⚠️ OAuthトークン取得失敗: ' + (tokenResult.error || '');
+        Logger.log('ステップ3警告: ' + ebayApiMessage);
       } else {
-        ebayApiMessage = '⚠️ eBay API接続エラー（ステータスコード: ' + statusCode + '）';
-        Logger.log('ステップ3警告: 接続エラー（' + statusCode + '）');
-      }
+        var token = tokenResult.token;
+        if (tokenResult.newProps) Object.assign(newProps, tokenResult.newProps);
+        Logger.log('OAuthトークン取得成功');
 
-    } catch (error) {
-      ebayApiMessage = '⚠️ eBay API接続エラー: ' + error.toString();
-      Logger.log('ステップ3エラー: ' + error.toString());
+        // Browse API で簡易テスト
+        var isSandbox = ebayConfig.isSandbox;
+        var baseUrl = isSandbox ? 'https://api.sandbox.ebay.com' : 'https://api.ebay.com';
+        var testApiUrl = baseUrl + '/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=123456789012';
+        var testResponse = UrlFetchApp.fetch(testApiUrl, {
+          method: 'get',
+          headers: { 'Authorization': 'Bearer ' + token, 'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US' },
+          muteHttpExceptions: true
+        });
+        var sc = testResponse.getResponseCode();
+        if (sc === 200 || sc === 404) {
+          ebayApiMessage = '✅ eBay API接続成功';
+          Logger.log('ステップ3完了（ステータスコード: ' + sc + '）');
+        } else if (sc === 401) {
+          ebayApiMessage = '⚠️ eBay API認証エラー（App ID/Cert IDを確認してください）';
+          Logger.log('ステップ3警告: 認証エラー（401）');
+        } else {
+          ebayApiMessage = '⚠️ eBay API接続エラー（ステータスコード: ' + sc + '）';
+          Logger.log('ステップ3警告: 接続エラー（' + sc + '）');
+        }
+      }
+    } catch (apiErr) {
+      ebayApiMessage = '⚠️ eBay API接続エラー: ' + apiErr.toString();
+      Logger.log('ステップ3エラー: ' + apiErr.toString());
     }
 
     // ステップ4: onEditトリガー登録（初回のみ）
-    let triggerMessage = '';
+    var triggerMessage = '';
     if (isFirstTime) {
       try {
         Logger.log('ステップ4: onEditトリガーを登録します');
         setupOnEditTrigger(spreadsheetId);
         triggerMessage = '✅ 自動実行トリガー登録完了';
         Logger.log('ステップ4完了: トリガー登録成功');
-      } catch (error) {
+      } catch (trigErr) {
         triggerMessage = '⚠️ トリガー登録失敗（手動で再実行してください）';
-        Logger.log('ステップ4エラー: ' + error.toString());
+        Logger.log('ステップ4エラー: ' + trigErr.toString());
       }
     }
 
     // ステップ5: ログクリーンアップトリガー登録（重複防止付きなので毎回実行）
-    let logTriggerMessage = '';
+    var logTriggerMessage = '';
     try {
       Logger.log('ステップ5: ログクリーンアップトリガーを登録します');
       setupLogCleanupTriggerSilent();
       logTriggerMessage = '✅ ログ自動クリーンアップ登録完了';
       Logger.log('ステップ5完了: ログクリーンアップトリガー登録成功');
-    } catch (error) {
+    } catch (logErr) {
       logTriggerMessage = '⚠️ ログクリーンアップトリガー登録失敗';
-      Logger.log('ステップ5エラー: ' + error.toString());
+      Logger.log('ステップ5エラー: ' + logErr.toString());
     }
 
-    // 完了メッセージ
-    let completionMessage = '';
-    if (isFirstTime) {
-      completionMessage = '✅ 権限承認完了\n✅ 設定検証完了\n' + ebayApiMessage + '\n' + triggerMessage + '\n' + logTriggerMessage + '\n\n' + validationMessage;
-    } else {
-      completionMessage = '✅ 設定検証完了\n' + ebayApiMessage + '\n' + logTriggerMessage + '\n\n' + validationMessage;
-    }
+    var completionMessage = isFirstTime
+      ? '✅ 権限承認完了\n✅ 設定検証完了\n' + ebayApiMessage + '\n' + triggerMessage + '\n' + logTriggerMessage + '\n\n' + validationMessage
+      : '✅ 設定検証完了\n' + ebayApiMessage + '\n' + logTriggerMessage + '\n\n' + validationMessage;
 
     return {
       success: true,
-      message: (isFirstTime ? '🎉 初期設定完了！' : '✅ 設定確認完了') + '\n\n' + completionMessage
+      message: (isFirstTime ? '🎉 初期設定完了！' : '✅ 設定確認完了') + '\n\n' + completionMessage,
+      newProps: newProps
     };
 
   } catch (error) {
@@ -284,44 +282,48 @@ function setupOnEditTrigger(spreadsheetId) {
  * 開発・テスト時や、権限承認を再度実行したい場合に使用
  */
 function resetInitialSetupFlag() {
-  const scriptProperties = PropertiesService.getScriptProperties();
-  scriptProperties.deleteProperty('INITIAL_SETUP_COMPLETED');
   Logger.log('初回セットアップフラグをリセットしました');
-  return { success: true, message: '初回セットアップフラグをリセットしました。\n\n次回の completeInitialSetup() 実行時に、権限承認から再度実行されます。' };
+  var result = resetInitialSetupFlagSA();
+  return {
+    success: true,
+    message: '初回セットアップフラグをリセットしました。\n\n次回の completeInitialSetup() 実行時に、権限承認から再度実行されます。',
+    newProps: result.newProps
+  };
 }
 
 /**
  * 初期セットアップを実行
  */
-function initialSetup(spreadsheetId) {
+function initialSetup(spreadsheetId, propsData) {
   try {
-    // 設定を検証
-    const validation = validateConfig();
+    var validation = validateConfigSA(spreadsheetId);
 
     if (!validation.isValid) {
       return { success: false, message: '設定エラー:\n' + validation.errors.join('\n') };
     }
 
-    // 必要なシートが存在するか確認
-    const ss = getTargetSpreadsheetResearch(spreadsheetId);
-    const requiredSheets = [SHEET_NAMES.SETTINGS, SHEET_NAMES.RESEARCH];
-    const missingSheets = [];
-
+    var ss = getTargetSpreadsheetResearch(spreadsheetId);
+    var requiredSheets = [SHEET_NAMES.SETTINGS, SHEET_NAMES.RESEARCH];
+    var missingSheets = [];
     requiredSheets.forEach(function(sheetName) {
-      if (!ss.getSheetByName(sheetName)) {
-        missingSheets.push(sheetName);
-      }
+      if (!ss.getSheetByName(sheetName)) missingSheets.push(sheetName);
     });
-
     if (missingSheets.length > 0) {
       throw new Error('以下のシートが見つかりません: ' + missingSheets.join(', '));
     }
 
-    // OAuthトークンを取得してテスト
-    const token = getOAuthToken();
+    var ebayConfig = getEbayConfigSA(spreadsheetId);
+    var tokenResult = getOAuthTokenSA(propsData || {}, ebayConfig);
+    if (!tokenResult.success) {
+      return { success: false, message: 'OAuthトークン取得失敗: ' + (tokenResult.error || '') };
+    }
     Logger.log('OAuthトークンを取得しました');
 
-    return { success: true, message: 'セットアップが完了しました' };
+    return {
+      success: true,
+      message: 'セットアップが完了しました',
+      newProps: tokenResult.newProps || {}
+    };
 
   } catch (error) {
     Logger.log('セットアップエラー: ' + error.toString());
@@ -332,25 +334,21 @@ function initialSetup(spreadsheetId) {
 /**
  * 設定を表示
  */
-function showConfig() {
+function showConfig(spreadsheetId) {
   try {
-    const config = getEbayConfig();
-    const validation = validateConfig();
+    var config = getEbayConfigSA(spreadsheetId);
+    var validation = validateConfigSA(spreadsheetId);
 
-    let message = '=== eBay API設定 ===\n\n';
+    var message = '=== eBay API設定 ===\n\n';
     message += 'App ID: ' + config.appId + '\n';
     message += 'Dev ID: ' + config.devId + '\n';
     message += 'Sandbox: ' + (config.isSandbox ? '有効' : '無効') + '\n';
     message += '画像フォルダ: ' + config.imageFolderUrl + '\n';
     message += '出品シートID: ' + config.listingSpreadsheetId + '\n\n';
     message += '検証結果: ' + (validation.isValid ? '✓ OK' : '✗ エラーあり') + '\n';
-
-    if (!validation.isValid) {
-      message += '\nエラー:\n' + validation.errors.join('\n');
-    }
+    if (!validation.isValid) message += '\nエラー:\n' + validation.errors.join('\n');
 
     return { success: true, message: message };
-
   } catch (error) {
     return { success: false, message: '設定の取得に失敗しました: ' + error.toString() };
   }
@@ -359,16 +357,14 @@ function showConfig() {
 /**
  * 設定を検証
  */
-function checkConfig() {
+function checkConfig(spreadsheetId) {
   try {
-    const validation = validateConfig();
-
+    var validation = validateConfigSA(spreadsheetId);
     if (validation.isValid) {
       return { success: true, message: '設定は正常です ✓' };
     } else {
       return { success: false, message: '設定エラー:\n\n' + validation.errors.join('\n') };
     }
-
   } catch (error) {
     return { success: false, message: '検証エラー: ' + error.toString() };
   }
@@ -401,26 +397,27 @@ function handleEdit(e) {
     return;
   }
   try {
-    // デバウンス（5秒以内の再実行スキップ）
-    const props = PropertiesService.getScriptProperties();
-    const lastRun = Number(props.getProperty('HANDLE_EDIT_LAST_RUN') || 0);
-    const now = Date.now();
-    if (now - lastRun < 5000) {
-      Logger.log('デバウンス: 前回から5秒未満のためスキップ');
-      return;
-    }
-    props.setProperty('HANDLE_EDIT_LAST_RUN', String(now));
-
-    // デバッグログ: onEditが呼ばれたことを記録
     Logger.log('=== onEdit トリガー発火 ===');
 
-    // イベントオブジェクトが存在しない場合は終了
     if (!e) {
       Logger.log('⚠️ イベントオブジェクトが存在しません');
       return;
     }
 
     const spreadsheetId = e.source.getId();
+    CURRENT_SPREADSHEET_ID = spreadsheetId;
+
+    // デバウンス（5秒以内の再実行スキップ）
+    // スプレッドシートIDをキー名に含めて複数クライアント間の干渉を防ぐ
+    const debounceKey = 'HANDLE_EDIT_LAST_RUN_' + spreadsheetId.substring(0, 20);
+    const props = PropertiesService.getScriptProperties();
+    const lastRun = Number(props.getProperty(debounceKey) || 0);
+    const now = Date.now();
+    if (now - lastRun < 5000) {
+      Logger.log('デバウンス: 前回から5秒未満のためスキップ');
+      return;
+    }
+    props.setProperty(debounceKey, String(now));
     const sheet = e.source.getActiveSheet();
     const range = e.range;
     const editedRow = range.getRow();
