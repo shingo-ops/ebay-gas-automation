@@ -132,7 +132,7 @@ function completeInitialSetup(spreadsheetId) {
     if (isFirstTime) {
       try {
         Logger.log('ステップ4: onEditトリガーを登録します');
-        setupOnEditTrigger();
+        setupOnEditTrigger(spreadsheetId);
         triggerMessage = '✅ 自動実行トリガー登録完了';
         Logger.log('ステップ4完了: トリガー登録成功');
       } catch (error) {

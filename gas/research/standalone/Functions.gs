@@ -545,24 +545,24 @@ function prepareTransferDataWithMapping(spreadsheetId, itemInfo, specInfo, listi
  * 出品ボタン（Expedited用）のクリックハンドラ
  * ポリシー1（14行目）のデータでSKUを生成して出品
  */
-function onListingButtonPolicy1(spreadsheetId) {
-  return transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_1_ROW, 'Expedited');
+function onListingButtonPolicy1(spreadsheetId, categoryChoice) {
+  return transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_1_ROW, 'Expedited', categoryChoice);
 }
 
 /**
  * 出品ボタン（Economy用）のクリックハンドラ
  * ポリシー2（15行目）のデータでSKUを生成して出品
  */
-function onListingButtonPolicy2(spreadsheetId) {
-  return transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_2_ROW, 'Economy');
+function onListingButtonPolicy2(spreadsheetId, categoryChoice) {
+  return transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_2_ROW, 'Economy', categoryChoice);
 }
 
 /**
  * 出品ボタン（書状用）のクリックハンドラ
  * ポリシー3（16行目）のデータでSKUを生成して出品
  */
-function onListingButtonPolicy3(spreadsheetId) {
-  return transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_3_ROW, '書状');
+function onListingButtonPolicy3(spreadsheetId, categoryChoice) {
+  return transferListingDataWithPolicy(spreadsheetId, RESEARCH_POLICY.POLICY_3_ROW, '書状', categoryChoice);
 }
 
 /**

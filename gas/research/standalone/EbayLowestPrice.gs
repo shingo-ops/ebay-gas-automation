@@ -163,6 +163,8 @@ function removeDailyLowestPriceTrigger(spreadsheetId) {
  */
 function handleEditLowestPrice(e) {
   if (!e) return;
+  // ライブラリ環境: e.source からスプレッドシートIDを設定（CURRENT_SPREADSHEET_IDがnullのため）
+  if (e.source) CURRENT_SPREADSHEET_ID = e.source.getId();
   const lock = LockService.getUserLock();
   if (!lock.tryLock(0)) {
     Logger.log('他の処理が実行中のためスキップ (handleEditLowestPrice)');
@@ -236,6 +238,16 @@ function lpParseInput(input) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // メイン実行
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * スタンドアロンライブラリ向け runAllLowestPrice ラッパー
+ * CURRENT_SPREADSHEET_ID を設定してから実行する（バインドスクリプト用）
+ * @param {string} spreadsheetId 対象スプレッドシートID
+ */
+function runAllLowestPriceSA(spreadsheetId) {
+  CURRENT_SPREADSHEET_ID = spreadsheetId;
+  return runAllLowestPrice();
+}
 
 /**
  * 全キーワードに対して最安値検索を実行（メニューから呼ぶ）
