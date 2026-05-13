@@ -366,5 +366,98 @@ function getEbayAccessToken(bindProps) {
 
 ---
 
+---
+
+## 8. Phase 3 実装設計 — PropertiesService 委譲パターン
+
+### 設計原則
+
+ライブラリは `PropertiesService` を一切呼ばない。
+バインドスクリプトがプロパティの読み書きを全て担う。
+
+```
+[バインドスクリプト]                          [スタンドアロンライブラリ]
+const props = PropertiesService                 ←── 直接呼び出し不可
+  .getScriptProperties();
+const propsData = props.getProperties(); ──→ 引数として渡す (plain object)
+const result = ResearchLib.foo(ssId, propsData, ...);
+applyNewProps_(props, result.newProps);  ←── newProps を書き戻す
+```
+
+### propsData パターン（読み取り）
+
+```javascript
+// バインドスクリプト側
+const propsData = PropertiesService.getScriptProperties().getProperties();
+// propsData は { KEY: 'value', ... } の plain object
+
+// ライブラリ側（reads）
+function getOAuthTokenSA(propsData, ebayConfig) {
+  const token = propsData['EBAY_ACCESS_TOKEN'];
+  const expiry = propsData['EBAY_TOKEN_EXPIRY'];
+  // ...
+}
+```
+
+### newProps パターン（書き込み）
+
+```javascript
+// ライブラリ側（writes: newProps を返す）
+return {
+  success: true,
+  token: token,
+  newProps: {
+    EBAY_ACCESS_TOKEN: token,      // 文字列 → setProperty
+    EBAY_TOKEN_EXPIRY: expiryStr   // 文字列 → setProperty
+  }
+};
+// null 値 = deleteProperty の指示
+// 例: { EBAY_ACCESS_TOKEN: null }  → deleteProperty('EBAY_ACCESS_TOKEN')
+
+// バインドスクリプト側の書き戻しヘルパー
+function applyNewProps_(scriptProps, newProps) {
+  if (!newProps) return;
+  Object.keys(newProps).forEach(function(key) {
+    if (newProps[key] === null) {
+      scriptProps.deleteProperty(key);
+    } else {
+      scriptProps.setProperty(key, newProps[key]);
+    }
+  });
+}
+```
+
+### PropertiesManager.gs 公開 API 一覧
+
+| 関数 | 引数 | 戻り値 | 対応キー |
+|------|------|--------|---------|
+| `getOAuthTokenSA(propsData, ebayConfig)` | propsData, ebayConfig | `{success, token, newProps?}` | EBAY_ACCESS_TOKEN, EBAY_TOKEN_EXPIRY |
+| `clearOAuthTokenSA()` | なし | `{success, newProps}` | EBAY_ACCESS_TOKEN=null, EBAY_TOKEN_EXPIRY=null |
+| `checkInitialSetupSA(propsData)` | propsData | `{isDone: boolean}` | INITIAL_SETUP_COMPLETED |
+| `markInitialSetupCompleteSA()` | なし | `{newProps}` | INITIAL_SETUP_COMPLETED='true' |
+| `resetInitialSetupFlagSA()` | なし | `{newProps}` | INITIAL_SETUP_COMPLETED=null |
+| `getDebounceLastRunSA(propsData)` | propsData | `number` (timestamp, 0 if not set) | HANDLE_EDIT_LAST_RUN |
+| `saveDebounceLastRunSA(timestamp)` | timestamp: number | `{newProps}` | HANDLE_EDIT_LAST_RUN=String(timestamp) |
+| `getBatchProgressSA(propsData)` | propsData | `{startIndex: number, totalCount: number}` | LP_BATCH_PROGRESS |
+| `saveBatchProgressSA(totalCount, completedCount)` | totalCount, completedCount | `{newProps}` | LP_BATCH_PROGRESS=JSON |
+| `clearBatchProgressSA()` | なし | `{newProps}` | LP_BATCH_PROGRESS=null |
+| `lpCheckRateLimitSA(propsData, maxDaily)` | propsData, maxDaily | `boolean` (true=制限内) | LP_REQ_YYYYMMDD |
+| `lpIncrementRequestCountSA(propsData)` | propsData | `{newProps}` | LP_REQ_YYYYMMDD=N+1 |
+
+### キー → 関数 マッピング（全7キー）
+
+| キー | 管理関数 | 用途 |
+|------|---------|------|
+| `EBAY_ACCESS_TOKEN` | getOAuthTokenSA / clearOAuthTokenSA | OAuthアクセストークン本体 |
+| `EBAY_TOKEN_EXPIRY` | getOAuthTokenSA / clearOAuthTokenSA | トークン有効期限（ms UNIX timestamp文字列） |
+| `INITIAL_SETUP_COMPLETED` | checkInitialSetupSA / markInitialSetupCompleteSA / resetInitialSetupFlagSA | 初回セットアップ完了フラグ |
+| `LP_BATCH_PROGRESS` | getBatchProgressSA / saveBatchProgressSA / clearBatchProgressSA | 最安値バッチ進捗JSON |
+| `HANDLE_EDIT_LAST_RUN` | getDebounceLastRunSA / saveDebounceLastRunSA | onEdit デバウンス用最終実行タイムスタンプ |
+| `LP_REQ_YYYYMMDD` | lpCheckRateLimitSA / lpIncrementRequestCountSA | 日次リクエスト数カウント（キー名に日付が含まれる） |
+| `DEBUG_TRANSFER` | — | **廃止** → Logger.log に置換（Phase 4以降） |
+
+---
+
 *調査者: Claude Code (claude-sonnet-4-6)*  
 *調査対象: gas/research/ ディレクトリ全 .gs ファイル*
+*Phase 3 設計追記: 2026-05-11*
