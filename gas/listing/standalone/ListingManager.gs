@@ -197,123 +197,113 @@ function extractItemSpecifics(rowData, headerMapping) {
  * @param {string} templateName テンプレート名（出品シートのDescription列の値）
  * @param {string} conditionDescription 状態説明（置換する文章）
  * @param {string} spreadsheetId スプレッドシートID
- * @returns {string} 生成されたDescription（テンプレートが見つからない場合はtemplateName をそのまま返す）
+ * @returns {string} 生成されたDescription
+ * @throws {Error} テンプレートが見つからない場合または設定に問題がある場合
  */
 function generateDescriptionFromTemplate(templateName, conditionDescription, spreadsheetId) {
-  try {
-    Logger.log('=== Description生成開始 ===');
-    Logger.log('テンプレート名: "' + templateName + '"');
-    Logger.log('状態説明: "' + (conditionDescription ? String(conditionDescription).substring(0, 50) + '...' : '(空)') + '"');
+  Logger.log('=== Description生成開始 ===');
+  Logger.log('テンプレート名: "' + templateName + '"');
+  Logger.log('状態説明: "' + (conditionDescription ? String(conditionDescription).substring(0, 50) + '...' : '(空)') + '"');
 
-    // テンプレート名が空の場合はそのまま返す
-    if (!templateName || String(templateName).trim() === '') {
-      Logger.log('⚠️ テンプレート名が空です。変換せずに返します。');
-      return templateName;
-    }
-
-    // Description_テンプレシートを取得
-    const ss = spreadsheetId
-      ? SpreadsheetApp.openById(spreadsheetId)
-      : SpreadsheetApp.getActiveSpreadsheet();
-
-    const templateSheet = ss.getSheetByName('Description_テンプレ');
-
-    if (!templateSheet) {
-      Logger.log('❌ "Description_テンプレ"シートが見つかりません。テンプレート名をそのまま返します。');
-      return templateName;
-    }
-
-    Logger.log('✅ Description_テンプレシートが見つかりました');
-
-    // ヘッダー行を取得（1行目）
-    const lastRow = templateSheet.getLastRow();
-    const lastCol = templateSheet.getLastColumn();
-
-    if (lastRow < 2) {
-      Logger.log('⚠️ Description_テンプレシートにデータがありません');
-      return templateName;
-    }
-
-    const headers = templateSheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    Logger.log('ヘッダー: ' + JSON.stringify(headers));
-
-    // ヘッダーマッピングを作成
-    const headerMapping = {};
-    for (let i = 0; i < headers.length; i++) {
-      const headerName = headers[i];
-      if (headerName) {
-        headerMapping[headerName] = i + 1;
-      }
-    }
-
-    const templateNameCol = headerMapping['テンプレート名'];
-    const templateCol = headerMapping['テンプレート'];
-
-    if (!templateNameCol) {
-      Logger.log('❌ "テンプレート名"列が見つかりません');
-      return templateName;
-    }
-
-    if (!templateCol) {
-      Logger.log('❌ "テンプレート"列が見つかりません');
-      return templateName;
-    }
-
-    Logger.log('「テンプレート名」列: ' + templateNameCol);
-    Logger.log('「テンプレート」列: ' + templateCol);
-
-    // データを取得（2行目以降）
-    const data = templateSheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
-
-    // テンプレート名で検索
-    let foundTemplate = null;
-    for (let i = 0; i < data.length; i++) {
-      const name = data[i][templateNameCol - 1]; // 0-based
-      const template = data[i][templateCol - 1]; // 0-based
-
-      if (name && String(name).trim() === String(templateName).trim()) {
-        foundTemplate = template;
-        Logger.log('✅ テンプレート発見: 行' + (i + 2));
-        break;
-      }
-    }
-
-    if (!foundTemplate) {
-      Logger.log('⚠️ テンプレート名"' + templateName + '"に該当するテンプレートが見つかりません');
-      Logger.log('利用可能なテンプレート名:');
-      for (let i = 0; i < data.length; i++) {
-        const name = data[i][templateNameCol - 1];
-        if (name) {
-          Logger.log('  - "' + name + '"');
-        }
-      }
-      return templateName;
-    }
-
-    // {説明文}を置換
-    let description = String(foundTemplate);
-
-    if (conditionDescription && String(conditionDescription).trim() !== '') {
-      description = description.replace(/\{説明文\}/g, String(conditionDescription));
-      Logger.log('✅ {説明文}を置換しました');
-    } else {
-      description = description.replace(/\{説明文\}/g, '');
-      Logger.log('状態説明が空のため{説明文}を除去します');
-    }
-
-    Logger.log('生成されたDescription（最初の100文字）: ' + description.substring(0, 100) + '...');
-    Logger.log('=== Description生成完了 ===');
-
-    return description;
-
-  } catch (error) {
-    Logger.log('❌ Description生成エラー: ' + error.toString());
-    if (error.stack) {
-      Logger.log('スタックトレース: ' + error.stack);
-    }
-    // エラーが発生した場合はテンプレート名をそのまま返す
+  // テンプレート名が空の場合はそのまま返す
+  if (!templateName || String(templateName).trim() === '') {
+    Logger.log('⚠️ テンプレート名が空です。変換せずに返します。');
     return templateName;
   }
+
+  // Description_テンプレシートを取得
+  const ss = spreadsheetId
+    ? SpreadsheetApp.openById(spreadsheetId)
+    : SpreadsheetApp.getActiveSpreadsheet();
+
+  const templateSheet = ss.getSheetByName('Description_テンプレ');
+
+  if (!templateSheet) {
+    throw new Error('"Description_テンプレ"シートが見つかりません。スプレッドシートに「Description_テンプレ」シートを作成してください。');
+  }
+
+  Logger.log('✅ Description_テンプレシートが見つかりました');
+
+  // ヘッダー行を取得（1行目）
+  const lastRow = templateSheet.getLastRow();
+  const lastCol = templateSheet.getLastColumn();
+
+  if (lastRow < 2) {
+    throw new Error('"Description_テンプレ"シートにデータがありません。1行目にヘッダー、2行目以降にテンプレートを追加してください。');
+  }
+
+  const headers = templateSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  Logger.log('ヘッダー: ' + JSON.stringify(headers));
+
+  // ヘッダーマッピングを作成
+  const headerMapping = {};
+  for (let i = 0; i < headers.length; i++) {
+    const headerName = headers[i];
+    if (headerName) {
+      headerMapping[headerName] = i + 1;
+    }
+  }
+
+  const templateNameCol = headerMapping['テンプレート名'];
+  const templateCol = headerMapping['テンプレート'];
+
+  if (!templateNameCol) {
+    throw new Error('"Description_テンプレ"シートに「テンプレート名」列がありません。1行目に「テンプレート名」ヘッダーを追加してください。');
+  }
+
+  if (!templateCol) {
+    throw new Error('"Description_テンプレ"シートに「テンプレート」列がありません。1行目に「テンプレート」ヘッダーを追加してください。');
+  }
+
+  Logger.log('「テンプレート名」列: ' + templateNameCol);
+  Logger.log('「テンプレート」列: ' + templateCol);
+
+  // データを取得（2行目以降）
+  const data = templateSheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+
+  // テンプレート名で検索
+  let foundTemplate = null;
+  for (let i = 0; i < data.length; i++) {
+    const name = data[i][templateNameCol - 1]; // 0-based
+    const template = data[i][templateCol - 1]; // 0-based
+
+    if (name && String(name).trim() === String(templateName).trim()) {
+      foundTemplate = template;
+      Logger.log('✅ テンプレート発見: 行' + (i + 2));
+      break;
+    }
+  }
+
+  if (!foundTemplate) {
+    const availableNames = [];
+    for (let i = 0; i < data.length; i++) {
+      const name = data[i][templateNameCol - 1];
+      if (name) availableNames.push(String(name).trim());
+    }
+    throw new Error(
+      'Descriptionテンプレート「' + templateName + '」が Description_テンプレシートに見つかりません。' +
+      'シートに「テンプレート名」列と一致する行を追加してください。' +
+      (availableNames.length > 0
+        ? '（登録済みテンプレート名: ' + availableNames.join(', ') + '）'
+        : '（テンプレートが1件も登録されていません）')
+    );
+  }
+
+  // {説明文}を置換
+  let description = String(foundTemplate);
+
+  if (conditionDescription && String(conditionDescription).trim() !== '') {
+    description = description.replace(/\{説明文\}/g, String(conditionDescription));
+    Logger.log('✅ {説明文}を置換しました');
+  } else {
+    description = description.replace(/\{説明文\}/g, '');
+    Logger.log('状態説明が空のため{説明文}を除去します');
+  }
+
+  Logger.log('生成されたDescription（最初の100文字）: ' + description.substring(0, 100) + '...');
+  Logger.log('=== Description生成完了 ===');
+
+  return description;
 }
 
 /**
