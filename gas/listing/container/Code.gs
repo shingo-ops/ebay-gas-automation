@@ -54,6 +54,7 @@ function onOpen() {
 
   ui.createMenu('在庫管理')
     .addItem('セルスタCSV出力', 'menuExportSellstaCsv')
+    .addItem('HARU CSV出力', 'menuExportHaruCsv')
     .addItem('仕入元名を一括更新', 'menuUpdatePurchaseSiteNames')
     .addToUi();
 
@@ -1041,6 +1042,52 @@ function menuExportSellstaCsv() {
 function menuClearSellstaCsvSheet() {
   const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
   EbayLib.clearSellstaCsvSheet(spreadsheetId);
+}
+
+/**
+ * 【在庫管理】HARU CSV出力
+ */
+function menuExportHaruCsv() {
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const ui = SpreadsheetApp.getUi();
+
+  const confirm = ui.alert(
+    'HARU CSV出力',
+    '条件: 出品ステータス=出品中、出品URLあり、HARU列が空\n\n対象行を HARU_CSV シートに出力してダウンロードします。\n実行しますか？',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (confirm !== ui.Button.OK) return;
+
+  try {
+    const result = EbayLib.exportHaruCsv(spreadsheetId);
+
+    if (!result.success) {
+      ui.alert('❌ エラー', result.message, ui.ButtonSet.OK);
+      return;
+    }
+
+    // バックエンドで HARU_CSV シートをクリア
+    EbayLib.clearHaruCsvSheet(spreadsheetId);
+
+    // ダウンロードダイアログを表示
+    const html = HtmlService.createHtmlOutput(
+      '<html><body style="font-family:sans-serif; padding:16px;">' +
+      '<p style="font-size:14px; margin:0 0 8px;">✅ ' + result.message + '</p>' +
+      '<p style="font-size:12px; color:#555; margin:0 0 16px;">ファイル名: ' + result.fileName + '</p>' +
+      '<a href="' + result.downloadUrl + '" target="_blank"' +
+      '   style="display:inline-block; padding:10px 20px; background:#1a73e8; color:#fff;' +
+      '          text-decoration:none; border-radius:4px; font-size:14px; margin-right:12px;">' +
+      '📥 CSVをダウンロード</a>' +
+      '<button onclick="google.script.host.close();"' +
+      '   style="padding:10px 20px; font-size:14px; cursor:pointer;">OK</button>' +
+      '</body></html>'
+    ).setTitle('CSVダウンロード').setWidth(450).setHeight(130);
+
+    SpreadsheetApp.getUi().showModalDialog(html, 'CSVダウンロード');
+
+  } catch(e) {
+    ui.alert('❌ エラー', e.toString(), ui.ButtonSet.OK);
+  }
 }
 
 /**
