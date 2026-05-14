@@ -67,9 +67,5 @@ function authorizeDBScript() {
     .onEdit()
     .create();
 
-  SpreadsheetApp.getUi().alert(
-    '✅ セットアップ完了\n\n' +
-    '出品DBの設定系シートを編集すると、\n' +
-    '出品シートに自動同期されます。'
-  );
+  Logger.log('✅ handleEditDB トリガー登録完了');
 }
