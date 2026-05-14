@@ -202,13 +202,16 @@ jobs:
           sed -i "s/LISTING_SA_SCRIPT_ID/$SA_SCRIPT_ID/" appsscript.json
           clasp push --force
 
-      - name: Run authorizeDBScript to register handleEditDB trigger
+      - name: Test clasp run (diagnostic)
         if: github.ref_name == 'develop'
         continue-on-error: true
         run: |
           cd gas/ebay-db/bind
           SCRIPT_ID="${{ secrets.EBAY_DB_BIND_DEV }}"
           sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          echo "--- testClaspRun ---"
+          clasp run testClaspRun
+          echo "--- authorizeDBScript ---"
           clasp run authorizeDBScript
 
   deploy-ebay-db-container:
