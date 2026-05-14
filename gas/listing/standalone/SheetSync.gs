@@ -12,6 +12,7 @@ const SYNC_TARGET_SHEETS = [
   '状態_テンプレ',
   'Description_テンプレ',
   '担当者管理',
+  '報酬管理',
   'ポリシー管理',
   'HARU_CSV',
   'セルスタ_CSV'
@@ -132,6 +133,65 @@ function syncSheet(spreadsheetId, sheetName, direction) {
  */
 function getSyncTargetSheets() {
   return SYNC_TARGET_SHEETS;
+}
+
+/**
+ * 【自動同期】出品シート → 出品DB (ss_to_db)
+ * onEdit トリガーから呼び出す。エラーは呼び出し元でハンドリングすること。
+ *
+ * @param {string} sourceSpreadsheetId 出品スプレッドシートID
+ * @param {string} sheetName 同期するシート名
+ * @returns {{ success: boolean, message: string }}
+ */
+function autoSyncSheetToDB(sourceSpreadsheetId, sheetName) {
+  Logger.log('autoSyncSheetToDB: ' + sheetName);
+  return syncSheet(sourceSpreadsheetId, sheetName, 'ss_to_db');
+}
+
+/**
+ * 【自動同期】出品DB → 出品シート (db_to_ss)
+ * 出品DB側の onEdit トリガーから呼び出す。
+ *
+ * @param {string} dbSpreadsheetId 出品DBのスプレッドシートID
+ * @param {string} sheetName 同期するシート名
+ * @returns {{ success: boolean, message: string }}
+ */
+function autoSyncDBToSheet(dbSpreadsheetId, sheetName) {
+  Logger.log('autoSyncDBToSheet: ' + sheetName);
+  const listingSSId = getListingSheetIdFromDb_(dbSpreadsheetId);
+  if (!listingSSId) {
+    return { success: false, message: '出品DBのツール設定に「出品シート」が設定されていません。' };
+  }
+  return syncSheet(listingSSId, sheetName, 'db_to_ss');
+}
+
+/**
+ * 出品DBのツール設定から出品スプレッドシートIDを逆引きする
+ *
+ * @param {string} dbSpreadsheetId 出品DBのスプレッドシートID
+ * @returns {string|null} 出品スプレッドシートID（取得できない場合は null）
+ */
+function getListingSheetIdFromDb_(dbSpreadsheetId) {
+  try {
+    const dbSS = SpreadsheetApp.openById(dbSpreadsheetId);
+    const configSheet = dbSS.getSheetByName('ツール設定');
+    if (!configSheet) return null;
+
+    const lastRow = configSheet.getLastRow();
+    if (lastRow < 2) return null;
+
+    const data = configSheet.getRange(1, 1, lastRow, 2).getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][0] || '').trim() === '出品シート') {
+        const urlOrId = String(data[i][1] || '').trim();
+        return urlOrId ? extractSpreadsheetId(urlOrId) : null;
+      }
+    }
+    return null;
+  } catch (e) {
+    Logger.log('getListingSheetIdFromDb_ エラー: ' + e.toString());
+    return null;
+  }
 }
 
 /**
