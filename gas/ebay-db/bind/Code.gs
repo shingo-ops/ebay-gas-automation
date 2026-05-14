@@ -51,14 +51,6 @@ function handleEditDB(e) {
 }
 
 /**
- * 診断用: clasp run で実行可能か確認する
- */
-function testClaspRun() {
-  Logger.log('✅ clasp run 動作確認: scriptId=' + ScriptApp.getScriptId());
-  return 'ok';
-}
-
-/**
  * 権限承認 & installable onEdit トリガー登録
  * 初回セットアップ時に手動で実行する
  */
