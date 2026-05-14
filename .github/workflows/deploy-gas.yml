@@ -12,6 +12,7 @@ on:
       - 'gas/research/container/**'
       - 'gas/research/bind/**'
       - 'gas/ebay-db/container/**'
+      - 'gas/ebay-db/bind/**'
 
 jobs:
   deploy-listing-standalone:
@@ -164,6 +165,41 @@ jobs:
             SCRIPT_ID="${{ secrets.RESEARCH_CB_DEV }}"
           fi
           sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          clasp push --force
+
+  deploy-ebay-db-bind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Restore clasp credentials
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+
+      - name: Set scriptId and deploy
+        run: |
+          cd gas/ebay-db/bind
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            SCRIPT_ID="${{ secrets.EBAY_DB_BIND_PROD }}"
+            SA_SCRIPT_ID="${{ secrets.LISTING_SA_PROD }}"
+          else
+            SCRIPT_ID="${{ secrets.EBAY_DB_BIND_DEV }}"
+            SA_SCRIPT_ID="${{ secrets.LISTING_SA_DEV }}"
+          fi
+          if [ -z "$SCRIPT_ID" ]; then
+            echo "⚠️ SCRIPT_ID が未設定のためスキップ（EBAY_DB_BIND_PROD/DEV シークレットを確認してください）"
+            exit 0
+          fi
+          sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          sed -i "s/LISTING_SA_SCRIPT_ID/$SA_SCRIPT_ID/" appsscript.json
           clasp push --force
 
   deploy-ebay-db-container:
