@@ -244,7 +244,13 @@ jobs:
       - name: Register handleEditDB trigger on eBay出品DB
         run: |
           cd gas/ebay-db/container
-          clasp run registerHandleEditTrigger
+          OUTPUT=$(clasp run registerHandleEditTrigger 2>&1)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -q "Exception"; then
+            echo "❌ registerHandleEditTrigger failed. Authorize script.scriptapp scope in GAS editor first."
+            exit 1
+          fi
+          echo "✅ registerHandleEditTrigger succeeded"
 
       - name: Import condition_ja_map and sync to reference book
         run: |
