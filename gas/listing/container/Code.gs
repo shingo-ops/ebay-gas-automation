@@ -14,6 +14,12 @@
  * 8. メニュー「eBay出品管理」→「権限承認・トリガー登録」を実行
  */
 
+// onEdit 自動同期の対象シート（設定系シートのみ）
+const SYNC_TARGET_SHEETS_AUTO = [
+  'プルダウン管理', 'ツール設定', '状態_テンプレ',
+  'Description_テンプレ', '担当者管理', '報酬管理', 'ポリシー管理'
+];
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // シート起動時メニュー
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -445,10 +451,14 @@ function handleEdit(e) {
 
     // 出品シート以外の処理
     if (sheetName !== '出品') {
-      // 状態テンプレのプルダウン選択時
-      // ※ 状態テンプレシートは出品シートにバインドされているため
-      // 出品シートの状態テンプレ列の変更を検知
-      // → handleEdit内で出品シートの処理として対応済み
+      // 設定系シートの自動同期 (ss → db)
+      if (SYNC_TARGET_SHEETS_AUTO.indexOf(sheetName) !== -1) {
+        try {
+          EbayLib.autoSyncSheetToDB(e.source.getId(), sheetName);
+        } catch (syncErr) {
+          Logger.log('自動同期エラー（継続）: ' + syncErr.toString());
+        }
+      }
       return;
     }
 
