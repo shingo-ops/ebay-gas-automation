@@ -236,8 +236,15 @@ jobs:
         run: |
           cd gas/ebay-db/container
           SCRIPT_ID="${{ secrets.EBAY_DB_CB_DEV }}"
+          SA_SCRIPT_ID="${{ secrets.LISTING_SA_DEV }}"
           sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          sed -i "s/LISTING_SA_SCRIPT_ID/$SA_SCRIPT_ID/" appsscript.json
           clasp push --force
+
+      - name: Register handleEditDB trigger on eBay出品DB
+        run: |
+          cd gas/ebay-db/container
+          clasp run registerHandleEditTrigger
 
       - name: Import condition_ja_map and sync to reference book
         run: |
