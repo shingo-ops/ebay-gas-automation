@@ -242,6 +242,7 @@ jobs:
           clasp push --force
 
       - name: Register handleEditDB trigger on eBay出品DB
+        continue-on-error: true
         run: |
           cd gas/ebay-db/container
           OUTPUT=$(clasp run registerHandleEditTrigger 2>&1)
