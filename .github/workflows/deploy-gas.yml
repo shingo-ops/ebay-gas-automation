@@ -202,6 +202,18 @@ jobs:
           sed -i "s/LISTING_SA_SCRIPT_ID/$SA_SCRIPT_ID/" appsscript.json
           clasp push --force
 
+      - name: Test clasp run (diagnostic)
+        if: github.ref_name == 'develop'
+        continue-on-error: true
+        run: |
+          cd gas/ebay-db/bind
+          SCRIPT_ID="${{ secrets.EBAY_DB_BIND_DEV }}"
+          sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          echo "--- testClaspRun ---"
+          clasp run testClaspRun
+          echo "--- authorizeDBScript ---"
+          clasp run authorizeDBScript
+
   deploy-ebay-db-container:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
@@ -224,8 +236,22 @@ jobs:
         run: |
           cd gas/ebay-db/container
           SCRIPT_ID="${{ secrets.EBAY_DB_CB_DEV }}"
+          SA_SCRIPT_ID="${{ secrets.LISTING_SA_DEV }}"
           sed -i "s/REPLACED_BY_CI/$SCRIPT_ID/" .clasp.json
+          sed -i "s/LISTING_SA_SCRIPT_ID/$SA_SCRIPT_ID/" appsscript.json
           clasp push --force
+
+      - name: Register handleEditDB trigger on eBay出品DB
+        continue-on-error: true
+        run: |
+          cd gas/ebay-db/container
+          OUTPUT=$(clasp run registerHandleEditTrigger 2>&1)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -q "Exception"; then
+            echo "❌ registerHandleEditTrigger failed. Authorize script.scriptapp scope in GAS editor first."
+            exit 1
+          fi
+          echo "✅ registerHandleEditTrigger succeeded"
 
       - name: Import condition_ja_map and sync to reference book
         run: |

@@ -1,5 +1,7 @@
 /**
  * eBay出品DB - バインドスクリプト（自動同期用）
+ * Deployed to: eBay_出品DB spreadsheet (DEV)
+ * Note: authorizeDBScript() は clasp run で実行可能（Logger.log のみ使用）
  *
  * 出品DBスプレッドシートに設置するバインドスクリプト。
  * 設定系シートの変更を検知して出品シートに自動同期する (db → ss)。
@@ -66,9 +68,5 @@ function authorizeDBScript() {
     .onEdit()
     .create();
 
-  SpreadsheetApp.getUi().alert(
-    '✅ セットアップ完了\n\n' +
-    '出品DBの設定系シートを編集すると、\n' +
-    '出品シートに自動同期されます。'
-  );
+  Logger.log('✅ handleEditDB トリガー登録完了');
 }

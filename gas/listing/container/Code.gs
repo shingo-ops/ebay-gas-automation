@@ -792,12 +792,43 @@ function authorizeScript() {
       triggerRegistered = true;
     }
 
+    // ── 3. 出品DB 欠損シート検出 ──────────────────────────────────
+    try {
+      const config = EbayLib.getListingToolConfig(ss.getId());
+      const dbUrl  = config['出品DB'];
+      if (dbUrl) {
+        const dbSsId = EbayLib.extractSpreadsheetId(dbUrl);
+        if (dbSsId) {
+          const dbSs       = SpreadsheetApp.openById(dbSsId);
+          const dbSheetNames = dbSs.getSheets().map(function(s) { return s.getName(); });
+          const missing      = EbayLib.getSyncTargetSheets().filter(function(name) {
+            return dbSheetNames.indexOf(name) === -1;
+          });
+          if (missing.length > 0) {
+            ui.alert(
+              '⚠️ 出品DB シート欠損',
+              '以下のシートが出品DBに存在しません:\n' +
+              missing.join('\n') +
+              '\n\n⚙️ → シート情報更新 を実行してください。',
+              ui.ButtonSet.OK
+            );
+          }
+        }
+      }
+    } catch (dbCheckErr) {
+      Logger.log('⚠️ 出品DBシートチェックエラー（継続）: ' + dbCheckErr.toString());
+    }
+
     ui.alert(
-      '権限承認完了',
+      'セットアップ完了',
       '✅ すべての権限が正常に承認されました。\n\n' +
       (triggerRegistered
-        ? '✅ handleEdit トリガーを新規登録しました。'
-        : 'ℹ️ handleEdit トリガーはすでに登録済みのためスキップしました。'),
+        ? '✅ handleEdit トリガーを新規登録しました。\n\n'
+        : 'ℹ️ handleEdit トリガーはすでに登録済みです。\n\n') +
+      '次に以下を実行してください:\n' +
+      '1. ⚙️ → シート情報更新 を実行\n' +
+      '2. 出品DBを開いて\n' +
+      '   ⚙️出品DB → 権限承認・トリガー登録 を実行',
       ui.ButtonSet.OK
     );
     Logger.log('✅ authorizeScript 完了');
